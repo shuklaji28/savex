@@ -210,48 +210,55 @@ def estimate_cost_inr(weight_grams: float, category: str) -> float:
 
 
 # ─── GEMINI EXTRACTION PROMPT ───
-EXTRACTION_SYSTEM_PROMPT = """You are a food inventory management assistant. Extract food items from user speech and classify their INTENT.
+EXTRACTION_SYSTEM_PROMPT = """You are a food inventory management assistant. Extract food items from user speech and classify each item's INTENT.
 
 INTENT TYPES:
-- "add": User bought, got, picked up, has, or is adding this item to their pantry/fridge
-- "mark_used": User consumed, used, finished, ate, cooked with, or completed using this item
-- "mark_wasted": User says item expired, spoiled, went bad, had to throw away, couldn't use, was wasted, or is rotten
+- "add": User bought, got, picked up, has, or is adding this item to their inventory
+- "mark_used": User consumed, finished, used up, ate, or cooked with this item
+- "mark_wasted": User says item expired, went bad, spoiled, had to throw away, couldn't use, was wasted
+- "metadata_update": User is correcting or adding details to an EXISTING item (e.g. location, price, expiry, quantity)
 
-INTENT DETECTION KEYWORDS:
-- Adding → "bought", "got", "picked up", "have", "purchased", "from market", "stocked up"
-- Used → "used", "finished", "ate", "consumed", "cooked with", "finished the", "used up", "done with"
-- Wasted → "expired", "went bad", "spoiled", "threw away", "had to throw", "wasted", "couldn't use", "rotten", "not able to use", "went off", "discarded"
+INTENT DETECTION:
+- Adding → "bought", "got", "picked up", "have", "purchased", "from market", "stocked up", "I have X in my Y"
+- Used → "used", "finished", "ate", "consumed", "cooked with", "used up", "done with"
+- Wasted → "expired", "went bad", "spoiled", "threw away", "wasted", "couldn't use", "rotten", "not able to use"
+- Update → "actually", "correction", "by the way", "the X costs", "X is in my Y", "update", "change", "X expires on", "X generally costs"
 
-RULES:
-- Extract EVERY food item mentioned
-- Normalize names to singular lowercase (tomatoes→tomato, eggs→egg)
-- Convert relative dates: "today"=current_date, "yesterday"=current_date-1day
-- If no date reference, assume today
-- If no storage location mentioned, set "unknown"
-- If quantity not specified, set quantity=1, approximate_quantity=true
-- Handle Indian foods: paneer, curd, atta, dal, ghee, maggi, roti, dosa, idli, etc.
-- If user mentions explicit expiry ("expires on 13th march", "expiry in 3 days"), capture it
-- category must be one of: vegetable, fruit, dairy, grain, spice, snack, beverage, meat, egg, other
-- For "mark_used" or "mark_wasted" intents, still provide normalized_name accurately — it will be used to find the item in inventory
+IMPORTANT RULES:
+1. storage_location = EXACT words user said (e.g. "office bag", "kitchen red jar", "car", "purse", "top shelf", "drawer"). Do NOT change to unknown if user mentioned a location.
+2. If no location mentioned, use "unknown"
+3. price_mentioned = numeric price in INR if user states it (e.g. "costs 40", "₹14", "14 rupees"). Null otherwise.
+4. voice_note = a short summary of exactly what the user said about this item (1 sentence max)
+5. Normalize names to singular lowercase (tomatoes→tomato, eggs→egg)
+6. Convert relative dates: "today"=current_date, "yesterday"=current_date-1day
+7. Handle Indian foods: paneer, curd, atta, dal, ghee, maggi, etc.
+8. For "metadata_update" intent, set fields_to_update with ONLY the fields user mentioned changing
+9. category must be one of: vegetable, fruit, dairy, grain, spice, snack, beverage, meat, egg, other
 
 Return ONLY valid JSON, no markdown, no explanation:
 {
   "items": [
     {
-      "intent": "add|mark_used|mark_wasted",
+      "intent": "add|mark_used|mark_wasted|metadata_update",
       "item_name": "original name as spoken",
       "normalized_name": "singular lowercase",
       "quantity": 1,
       "unit": "count",
       "approximate_quantity": false,
-      "storage_location": "fridge|freezer|kitchen_counter|pantry_shelf|unknown",
+      "storage_location": "exact location user mentioned, or unknown",
       "added_date": "YYYY-MM-DD",
       "expiry_date_mentioned": "YYYY-MM-DD or null",
       "expiry_relative_days": null,
-      "category": "vegetable|fruit|dairy|grain|spice|snack|beverage|meat|egg|other"
+      "category": "vegetable|fruit|dairy|grain|spice|snack|beverage|meat|egg|other",
+      "price_mentioned": null,
+      "voice_note": "brief summary of what user said about this item",
+      "fields_to_update": null
     }
   ]
-}"""
+}
+
+For metadata_update intent, fields_to_update should be an object with only changed fields, e.g.:
+{"storage_location": "office bag", "price_inr": 40, "expiry_date": "2026-03-30"}"""
 
 RECIPE_SYSTEM_PROMPT = """You are a practical home cook assistant focused on PREVENTING food waste. You suggest quick, easy recipes using ingredients that are about to expire.
 
