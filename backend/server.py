@@ -835,22 +835,29 @@ async def get_reports():
         if w.get("action_date"):
             waste_dates.add(w["action_date"])
 
+    # Streak = consecutive days going back from today where nothing was wasted
+    # Only count days AFTER the user first added an item (no app = no streak)
+    first_item = await db.food_items.find_one(sort=[("created_at", 1)])
+    app_start = today  # default: started today
+    if first_item and first_item.get("created_at"):
+        try:
+            app_start = date.fromisoformat(first_item["created_at"][:10])
+        except Exception:
+            pass
+
     current_streak = 0
     check_date = today
-    while True:
+    while check_date >= app_start:
         if check_date.isoformat() in waste_dates:
             break
         current_streak += 1
         check_date -= timedelta(days=1)
-        if current_streak > 365:
-            break
 
-    # Get total days tracked
-    first_item = await db.food_items.find_one(sort=[("created_at", 1)])
+    # Longest streak (scan full history)
     longest_streak = current_streak
     if first_item and first_item.get("created_at"):
         try:
-            start = date.fromisoformat(first_item["created_at"][:10])
+            start = app_start
             check = start
             streak = 0
             while check <= today:
