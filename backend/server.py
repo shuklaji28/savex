@@ -421,6 +421,37 @@ async def process_extracted_items(items_list: list):
                 updated_items.append(matched)
             else:
                 not_found.append({"name": name, "intent": intent})
+
+        elif intent == "metadata_update":
+            matched = await find_active_item_by_name(name)
+            if matched:
+                fields = item_data.get("fields_to_update") or {}
+                update_set = {"updated_at": now_iso}
+                if "storage_location" in fields:
+                    update_set["storage_location"] = fields["storage_location"]
+                if "price_inr" in fields and fields["price_inr"]:
+                    update_set["estimated_cost_inr"] = fields["price_inr"]
+                    asyncio.create_task(save_user_price(name, fields["price_inr"]))
+                if "expiry_date" in fields and fields["expiry_date"]:
+                    update_set["expiry_date"] = fields["expiry_date"]
+                if "quantity" in fields:
+                    update_set["quantity"] = fields["quantity"]
+                if "unit" in fields:
+                    update_set["unit"] = fields["unit"]
+                voice_note = item_data.get("voice_note", "")
+                if voice_note:
+                    update_set["voice_note"] = voice_note
+                # also save user-mentioned price from top-level price_mentioned
+                pm = item_data.get("price_mentioned")
+                if pm and pm > 0:
+                    update_set["estimated_cost_inr"] = pm
+                    asyncio.create_task(save_user_price(name, pm))
+                await db.food_items.update_one({"id": matched["id"]}, {"$set": update_set})
+                matched.update(update_set)
+                matched.pop("_id", None)
+                updated_items.append(matched)
+            else:
+                not_found.append({"name": name, "intent": intent})
         else:
             # ADD flow — check for duplicates first
             existing_batches = await db.food_items.find(
