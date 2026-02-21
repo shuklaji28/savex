@@ -267,6 +267,89 @@ def parse_json_from_llm(text: str) -> dict:
         return {"items": []}
 
 
+async def find_active_item_by_name(name: str) -> dict | None:
+    """Find active inventory item by normalized name — exact match then partial."""
+    # Exact match
+    item = await db.food_items.find_one({"normalized_name": name, "status": "active"}, {"_id": 0})
+    if item:
+        return item
+    # Partial match: stored name contains query word or vice versa
+    item = await db.food_items.find_one(
+        {"normalized_name": {"$regex": name, "$options": "i"}, "status": "active"}, {"_id": 0}
+    )
+    if item:
+        return item
+    # Reverse partial: query name contains stored name (e.g., "full cream milk" found by "milk")
+    all_active = await db.food_items.find({"status": "active"}, {"_id": 0, "id": 1, "normalized_name": 1}).to_list(500)
+    for doc in all_active:
+        stored = doc.get("normalized_name", "")
+        if stored and stored in name:
+            return await db.food_items.find_one({"id": doc["id"]}, {"_id": 0})
+    return None
+
+
+async def process_extracted_items(items_list: list):
+    """Route extracted items to add or update flows based on intent."""
+    added_items = []
+    updated_items = []
+    not_found = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    today_iso = date.today().isoformat()
+
+    for item_data in items_list:
+        intent = item_data.get("intent", "add")
+        name = item_data.get("normalized_name", item_data.get("item_name", "unknown")).lower().strip()
+
+        if intent in ("mark_used", "mark_wasted"):
+            new_status = "used" if intent == "mark_used" else "wasted"
+            matched = await find_active_item_by_name(name)
+            if matched:
+                await db.food_items.update_one(
+                    {"id": matched["id"]},
+                    {"$set": {"status": new_status, "action_date": today_iso, "updated_at": now_iso}}
+                )
+                matched["status"] = new_status
+                matched["action_date"] = today_iso
+                updated_items.append(matched)
+            else:
+                not_found.append({"name": name, "intent": intent})
+        else:
+            # ADD flow (existing logic)
+            expiry = compute_expiry(item_data)
+            days_remaining, urgency = compute_urgency(expiry)
+            qty = item_data.get("quantity", 1)
+            unit = item_data.get("unit", "count")
+            category = item_data.get("category", get_category(name))
+            weight = estimate_weight_grams(name, qty, unit)
+            cost = estimate_cost_inr(weight, category)
+
+            food_doc = {
+                "id": str(uuid.uuid4()),
+                "item_name": item_data.get("item_name", name),
+                "normalized_name": name,
+                "quantity": qty,
+                "unit": unit,
+                "approximate_quantity": item_data.get("approximate_quantity", False),
+                "storage_location": item_data.get("storage_location", "unknown"),
+                "category": category,
+                "added_date": item_data.get("added_date", today_iso),
+                "expiry_date": expiry,
+                "status": "active",
+                "action_date": None,
+                "estimated_weight_grams": weight,
+                "estimated_cost_inr": cost,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            }
+            await db.food_items.insert_one(food_doc)
+            food_doc["days_remaining"] = days_remaining
+            food_doc["urgency_level"] = urgency
+            food_doc.pop("_id", None)
+            added_items.append(food_doc)
+
+    return added_items, updated_items, not_found
+
+
 # ─── API ENDPOINTS ───
 
 @api_router.get("/")
