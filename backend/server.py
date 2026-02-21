@@ -346,6 +346,74 @@ async def process_voice(audio: UploadFile = File(...)):
         os.unlink(tmp_path)
 
 
+@api_router.post("/process-text")
+async def process_text(req: dict):
+    """Process text input directly (fallback for when voice doesn't work)"""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        return {"error": "API key not configured"}
+
+    transcript = req.get("text", "")
+    if not transcript.strip():
+        return {"error": "No text provided", "items": [], "count": 0}
+
+    try:
+        session_id = str(uuid.uuid4())
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=session_id,
+            system_message=EXTRACTION_SYSTEM_PROMPT
+        ).with_model("gemini", "gemini-3-flash-preview")
+
+        prompt = f"Current date: {date.today().isoformat()}\n\nTranscript: \"{transcript}\""
+        response = await chat.send_message(UserMessage(text=prompt))
+        logger.info(f"Gemini response: {response}")
+        extracted = parse_json_from_llm(response)
+        items_list = extracted.get("items", [])
+
+        saved_items = []
+        for item_data in items_list:
+            expiry = compute_expiry(item_data)
+            days_remaining, urgency = compute_urgency(expiry)
+            name = item_data.get("normalized_name", item_data.get("item_name", "unknown"))
+            qty = item_data.get("quantity", 1)
+            unit = item_data.get("unit", "count")
+            category = item_data.get("category", get_category(name))
+            weight = estimate_weight_grams(name, qty, unit)
+            cost = estimate_cost_inr(weight, category)
+
+            food_doc = {
+                "id": str(uuid.uuid4()),
+                "item_name": item_data.get("item_name", name),
+                "normalized_name": name,
+                "quantity": qty,
+                "unit": unit,
+                "approximate_quantity": item_data.get("approximate_quantity", False),
+                "storage_location": item_data.get("storage_location", "unknown"),
+                "category": category,
+                "added_date": item_data.get("added_date", date.today().isoformat()),
+                "expiry_date": expiry,
+                "status": "active",
+                "action_date": None,
+                "estimated_weight_grams": weight,
+                "estimated_cost_inr": cost,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.food_items.insert_one(food_doc)
+            food_doc["days_remaining"] = days_remaining
+            food_doc["urgency_level"] = urgency
+            food_doc.pop("_id", None)
+            saved_items.append(food_doc)
+
+        return {"transcript": transcript, "items": saved_items, "count": len(saved_items)}
+    except Exception as e:
+        logger.error(f"Error processing text: {e}", exc_info=True)
+        return {"error": str(e), "transcript": transcript, "items": [], "count": 0}
+
+
 @api_router.get("/inventory")
 async def get_inventory():
     """Get active inventory items grouped by urgency"""
