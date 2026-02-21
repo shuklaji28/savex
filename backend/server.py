@@ -798,7 +798,66 @@ Keep it concise and practical."""
         logger.error(f"Daily recipe job error: {e}")
 
 
-@api_router.post("/notifications/test")
+async def _job_meal_suggestion(meal: str = "dinner"):
+    """Send a meal-specific recipe suggestion (breakfast / lunch / dinner)."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    meal_emoji = {"breakfast": "🌅", "lunch": "☀️", "dinner": "🌙"}.get(meal, "🍽️")
+    try:
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        items = await db.food_items.find({"status": "active"}, {"_id": 0}).to_list(1000)
+
+        candidates = []
+        for item in items:
+            days, urgency = compute_urgency(item.get("expiry_date", ""))
+            if days > 0:
+                candidates.append((days, urgency, item["normalized_name"], item["quantity"], item["unit"]))
+        candidates.sort(key=lambda x: x[0])
+
+        near_expiry = [(d, u, n, q, un) for d, u, n, q, un in candidates if u in ("critical", "urgent", "upcoming")]
+        use_these = near_expiry[:5] if near_expiry else candidates[:5]
+
+        if not use_these:
+            logger.info(f"{meal} suggestion: no active items, skipping")
+            return
+
+        items_text = "\n".join([f"- {n} ({q} {un}, {d} days left)" for d, u, n, q, un in use_these])
+
+        prompt_system = f"""You are a home cook assistant. Suggest ONE simple {meal} recipe using the provided ingredients.
+Keep it practical for an Indian household. Format your reply EXACTLY like this (plain text, no JSON):
+
+Recipe: <name>
+Time: <X> min
+Uses: <comma-separated expiring items>
+Needs: <other basic pantry items>
+Steps:
+1. <step>
+2. <step>
+3. <step>
+Tip: <one quick tip>
+
+Keep it concise and under 200 words."""
+
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=str(uuid.uuid4()),
+            system_message=prompt_system
+        ).with_model("gemini", "gemini-3-flash-preview")
+
+        response = await chat.send_message(UserMessage(
+            text=f"Today is {date.today().strftime('%A, %d %B %Y')}.\n\nItems to use up:\n{items_text}\n\nSuggest a {meal} recipe."
+        ))
+
+        body = (
+            f"{meal_emoji} *SaveX — What to cook for {meal.capitalize()} tonight:*\n\n"
+            + response.strip()
+            + "\n\n_Open SaveX > Cook tab for more ideas!_ 🌱"
+        )
+        _send_whatsapp(body)
+    except Exception as e:
+        logger.error(f"{meal} suggestion job error: {e}")
+
+
+
 async def test_notification(req: dict):
     """
     Manually trigger a WhatsApp notification for testing.
