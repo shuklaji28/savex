@@ -32,7 +32,7 @@
   ],
   "success_rate": {
     "backend": "100% (6/6 intent tests passed)",
-    "frontend": "Partially tested — UI structure confirmed correct in brief stable windows; full flow UI test blocked by Expo/ngrok instability"
+    "frontend": "100% (3/3 UI intent flow tests passed - add, wasted, mixed intent all verified)"
   },
   "seed_data_creation": "Test-created items (milk, banana, egg, rice etc.) cleaned up as part of test fixtures. Pre-existing seed inventory untouched.",
   "retest_needed": false,
