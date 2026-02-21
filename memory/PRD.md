@@ -72,3 +72,18 @@ Voice-first household food waste reduction mobile app that helps users reduce fo
 - Multi-household support with sharing
 - Gamification: badges for waste reduction milestones
 - Community leaderboard for waste reduction
+
+---
+
+## CHANGELOG
+
+### Feb 2026 — Intent-Based Voice/Text Processing
+
+**Feature: Voice/Text can now update existing inventory items**
+- Updated Gemini extraction prompt to classify intent: `add` | `mark_used` | `mark_wasted`
+- New `process_extracted_items()` shared function handles both add and update flows
+- New `find_active_item_by_name()` with 3-tier fuzzy matching (exact → regex → reverse partial)
+- Both `/api/process-voice` and `/api/process-text` now return `updated_items` + `not_found`
+- Frontend result card shows separate green "Added N items" and grey "Updated N items" sections
+- Not-found items shown in amber so user knows what wasn't matched
+- **Testing**: 6/6 backend + 3/3 frontend tests passed ✅
