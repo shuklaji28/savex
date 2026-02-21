@@ -89,17 +89,66 @@ WEIGHT_ESTIMATES = {
 }
 UNIT_TO_GRAMS = {"kg": 1000, "gram": 1, "g": 1, "liter": 1000, "litre": 1000, "l": 1000, "ml": 1, "dozen": 600}
 
-# Cost per 500g in INR by category
+# Cost per 500g in INR by category (fallback only)
 COST_PER_500G = {
     "vegetable": 40, "fruit": 60, "dairy": 70, "grain": 40,
     "spice": 80, "snack": 80, "beverage": 60, "meat": 150, "egg": 40, "other": 50,
 }
 
+# ─── INDIAN PRICE LOOKUP (per standard unit) ───
+INDIAN_PRICE_DB = {
+    # beverages
+    "diet coke": 40, "coke": 40, "pepsi": 40, "sprite": 40, "thumbs up": 40,
+    "limca": 35, "maaza": 30, "frooti": 20, "paper boat": 30,
+    "mineral water": 20, "water bottle": 20,
+    "tea": 30, "coffee": 50, "milk": 25,  # per 200ml/250ml
+    "juice": 40, "coconut water": 35,
+    # dairy
+    "curd": 25, "yogurt": 25, "paneer": 80, "butter": 55, "ghee": 150,
+    "cheese": 80, "cream": 60,
+    # grains / staples
+    "bread": 40, "pav": 25, "bun": 25, "roti": 5, "paratha": 15,
+    "maggi": 14, "instant noodle": 14, "noodle": 14, "pasta": 50,
+    "rice": 50, "atta": 40, "maida": 35, "dal": 80, "poha": 30,
+    "suji": 30, "besan": 50, "oats": 60,
+    # eggs
+    "egg": 7,
+    # vegetables (per piece/100g estimate)
+    "onion": 5, "tomato": 8, "potato": 6, "garlic": 10, "ginger": 15,
+    "spinach": 20, "coriander": 10, "mint": 10, "methi": 15,
+    "capsicum": 20, "carrot": 10, "cucumber": 15, "radish": 10,
+    "cabbage": 25, "cauliflower": 30, "broccoli": 40, "peas": 30,
+    "ladies finger": 20, "bhindi": 20, "brinjal": 15, "baingan": 15,
+    "mushroom": 40, "corn": 15, "beetroot": 20,
+    # fruits
+    "banana": 8, "apple": 20, "orange": 15, "mango": 20, "papaya": 20,
+    "watermelon": 10, "grapes": 30, "pomegranate": 30, "guava": 10,
+    "lemon": 5, "lime": 5, "pineapple": 40, "strawberry": 100,
+    # snacks
+    "biscuit": 10, "namkeen": 20, "chips": 20, "kurkure": 10,
+    "chocolate": 40, "candy": 5,
+    # meat
+    "chicken": 80, "mutton": 120, "fish": 100, "prawn": 150,
+}
+
+
+def _infer_storage_multiplier(storage_location: str) -> float:
+    """Map free-text storage location to a shelf-life multiplier."""
+    loc = (storage_location or "").lower()
+    if "freezer" in loc:
+        return 3.0
+    if "fridge" in loc or "refrigerator" in loc or "cold" in loc:
+        return 1.5
+    if "pantry" in loc or "shelf" in loc or "rack" in loc or "cupboard" in loc or "almirah" in loc:
+        return 1.0
+    return 0.85  # bag, purse, office, car, counter, etc. — room temp default
+
+
 def get_shelf_life(name: str, storage: str) -> int:
     normalized = name.lower().strip()
     info = SHELF_LIFE_DB.get(normalized)
     base_days = info["days"] if info else 5
-    multiplier = STORAGE_MULTIPLIER.get(storage, 0.85)
+    multiplier = _infer_storage_multiplier(storage)
     return max(1, int(base_days * multiplier))
 
 def get_category(name: str) -> str:
@@ -116,6 +165,45 @@ def estimate_weight_grams(name: str, quantity: float, unit: str) -> float:
     per_item = WEIGHT_ESTIMATES.get(normalized, 200)
     return quantity * per_item
 
+def _lookup_unit_price(name: str) -> float | None:
+    """Check INDIAN_PRICE_DB with exact then partial match."""
+    normalized = name.lower().strip()
+    if normalized in INDIAN_PRICE_DB:
+        return INDIAN_PRICE_DB[normalized]
+    for key, price in INDIAN_PRICE_DB.items():
+        if key in normalized or normalized in key:
+            return price
+    return None
+
+async def get_user_price(name: str) -> float | None:
+    """Check user-taught price memory for this item."""
+    doc = await db.price_memory.find_one({"normalized_name": name.lower().strip()}, {"_id": 0, "price_inr": 1})
+    return doc["price_inr"] if doc else None
+
+async def save_user_price(name: str, price_inr: float):
+    """Save or update user-taught price in price_memory collection."""
+    await db.price_memory.update_one(
+        {"normalized_name": name.lower().strip()},
+        {"$set": {"normalized_name": name.lower().strip(), "price_inr": price_inr,
+                  "source": "user_taught", "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    logger.info(f"Price memory saved: {name} = ₹{price_inr}")
+
+async def estimate_cost_inr_smart(name: str, weight_grams: float, category: str, price_mentioned: float | None = None) -> float:
+    """Resolve price: user_mention > price_memory > INDIAN_PRICE_DB > category estimate."""
+    if price_mentioned and price_mentioned > 0:
+        return round(price_mentioned, 2)
+    user_price = await get_user_price(name)
+    if user_price:
+        return round(user_price, 2)
+    unit_price = _lookup_unit_price(name)
+    if unit_price:
+        return round(unit_price, 2)
+    cost_per_500 = COST_PER_500G.get(category, 50)
+    return round((weight_grams / 500) * cost_per_500, 2)
+
+# keep old function for non-async contexts
 def estimate_cost_inr(weight_grams: float, category: str) -> float:
     cost_per_500 = COST_PER_500G.get(category, 50)
     return round((weight_grams / 500) * cost_per_500, 2)
