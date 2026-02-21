@@ -379,54 +379,56 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {!showTextInput ? (
-            <>
-              <Animated.View style={[s.micOuter, { transform: [{ scale: pulseAnim }] }]}>
-                <TouchableOpacity
-                  testID="mic-button"
-                  style={[s.micButton, isRecording && s.micRecording, isProcessing && s.micProcessing]}
-                  onPress={handleMicPress}
-                  activeOpacity={0.7}
-                  disabled={isProcessing}
-                >
-                  <Ionicons name={isRecording ? 'stop' : 'mic'} size={40} color={isRecording ? '#EF4444' : '#0A0A0A'} />
-                </TouchableOpacity>
-              </Animated.View>
-              {!isRecording && !isProcessing && !hasResult && !error && (
-                <Text style={s.hint}>Tap to start recording</Text>
-              )}
-              <TouchableOpacity testID="switch-to-text-btn" onPress={() => setShowTextInput(true)} style={s.switchBtn}>
-                <Ionicons name="create-outline" size={16} color="#52525B" />
-                <Text style={s.switchText}>or type instead</Text>
+          {/* Always show mic — text input mode commented out (dev only) */}
+          <>
+            <Animated.View style={[s.micOuter, { transform: [{ scale: pulseAnim }] }]}>
+              <TouchableOpacity
+                testID="mic-button"
+                style={[s.micButton, isRecording && s.micRecording, isProcessing && s.micProcessing]}
+                onPress={handleMicPress}
+                activeOpacity={0.7}
+                disabled={isProcessing}
+              >
+                <Ionicons name={isRecording ? 'stop' : 'mic'} size={40} color={isRecording ? '#EF4444' : '#0A0A0A'} />
               </TouchableOpacity>
-            </>
-          ) : (
-            <View style={s.textInputWrap}>
-              <TextInput
-                testID="text-input"
-                style={s.textInput}
-                placeholder='e.g. "2 tomatoes and milk in fridge"'
-                placeholderTextColor="#52525B"
-                value={textInput}
-                onChangeText={setTextInput}
-                multiline
-              />
-              <View style={s.textActions}>
-                <TouchableOpacity
-                  testID="send-text-btn"
-                  style={[s.sendBtn, !textInput.trim() && s.sendBtnDisabled]}
-                  onPress={sendText}
-                  disabled={!textInput.trim() || isProcessing}
-                >
-                  <Ionicons name="arrow-up" size={20} color={textInput.trim() ? '#0A0A0A' : '#52525B'} />
-                </TouchableOpacity>
-              </View>
-              <TouchableOpacity testID="switch-to-voice-btn" onPress={() => setShowTextInput(false)} style={s.switchBtn}>
-                <Ionicons name="mic-outline" size={16} color="#52525B" />
-                <Text style={s.switchText}>use voice instead</Text>
+            </Animated.View>
+            {!isRecording && !isProcessing && !hasResult && !error && (
+              <Text style={s.hint}>Tap to start recording</Text>
+            )}
+          </>
+
+          {/* DEV ONLY: text input toggle — commented out
+          <TouchableOpacity testID="switch-to-text-btn" onPress={() => setShowTextInput(true)} style={s.switchBtn}>
+            <Ionicons name="create-outline" size={16} color="#52525B" />
+            <Text style={s.switchText}>or type instead</Text>
+          </TouchableOpacity>
+
+          <View style={s.textInputWrap}>
+            <TextInput
+              testID="text-input"
+              style={s.textInput}
+              placeholder='e.g. "2 tomatoes and milk in fridge"'
+              placeholderTextColor="#52525B"
+              value={textInput}
+              onChangeText={setTextInput}
+              multiline
+            />
+            <View style={s.textActions}>
+              <TouchableOpacity
+                testID="send-text-btn"
+                style={[s.sendBtn, !textInput.trim() && s.sendBtnDisabled]}
+                onPress={sendText}
+                disabled={!textInput.trim() || isProcessing}
+              >
+                <Ionicons name="arrow-up" size={20} color={textInput.trim() ? '#0A0A0A' : '#52525B'} />
               </TouchableOpacity>
             </View>
-          )}
+            <TouchableOpacity testID="switch-to-voice-btn" onPress={() => setShowTextInput(false)} style={s.switchBtn}>
+              <Ionicons name="mic-outline" size={16} color="#52525B" />
+              <Text style={s.switchText}>use voice instead</Text>
+            </TouchableOpacity>
+          </View>
+          */}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
