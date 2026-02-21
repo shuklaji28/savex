@@ -995,81 +995,68 @@ Rules:
 
 @api_router.post("/whatsapp/webhook")
 async def whatsapp_webhook(request: Request):
-    """Receive incoming WhatsApp replies from Twilio and update inventory."""
-    from twilio.rest import Client as TwilioClient
+    """Receive ANY WhatsApp message — full inventory control via chat."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage as LLMUserMessage
     try:
         form = await request.form()
         user_message = (form.get("Body") or "").strip()
         from_number = form.get("From", "")
-        logger.info(f"WhatsApp reply from {from_number}: {user_message}")
+        logger.info(f"WhatsApp message from {from_number}: {user_message}")
 
         if not user_message:
             return {"status": "ignored"}
 
-        # Find the most recent active alert session
-        now_iso = datetime.now(timezone.utc).isoformat()
-        session = await db.alert_sessions.find_one(
-            {"from_number": WA_TO, "expires_at": {"$gt": now_iso}},
-            sort=[("created_at", -1)]
-        )
-
-        if not session:
-            # No active session — send a helpful nudge
-            _send_whatsapp(
-                "👋 *savex* here! No active alert session found.\n\n"
-                "Open the savex app to log items, or wait for tonight's 8 PM expiry alert to reply here."
-            )
-            return {"status": "no_session"}
-
-        session_items = session.get("items", [])
-
-        # Use Gemini to interpret the reply
-        parsed = await _interpret_whatsapp_reply(user_message, session_items)
-        actions = parsed.get("actions", [])
-        mark_all = parsed.get("mark_all")
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
         today_iso = date.today().isoformat()
-        updated = []
 
-        if mark_all in ("used", "wasted"):
-            for it in session_items:
-                await db.food_items.update_one(
-                    {"id": it["item_id"]},
-                    {"$set": {"status": mark_all, "action_date": today_iso, "updated_at": now_iso}}
-                )
-                updated.append(f"✅ {it['display'].capitalize()} → {mark_all}")
-        else:
-            for action in actions:
-                item_id = action.get("item_id")
-                act = action.get("action")
-                name = action.get("item_name", item_id)
-                if item_id and act in ("used", "wasted"):
-                    await db.food_items.update_one(
-                        {"id": item_id},
-                        {"$set": {"status": act, "action_date": today_iso, "updated_at": now_iso}}
-                    )
-                    updated.append(f"{'✅' if act == 'used' else '🗑️'} {name.capitalize()} → {act}")
+        # Run full Gemini extraction — same pipeline as voice/text input
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=str(uuid.uuid4()),
+            system_message=EXTRACTION_SYSTEM_PROMPT
+        ).with_model("gemini", "gemini-3-flash-preview")
 
+        response = await chat.send_message(LLMUserMessage(
+            text=f"Current date: {today_iso}\n\nUser message: {user_message}"
+        ))
+        extracted = parse_json_from_llm(response)
+        items_list = extracted.get("items", [])
+
+        if not items_list:
+            _send_whatsapp(
+                "🤔 *savex* couldn't find any food items in that.\n\n"
+                "Try:\n• _\"used the paneer\"_\n• _\"bought eggs and milk\"_\n• _\"threw away the spinach\"_"
+            )
+            return {"status": "no_items_found"}
+
+        # Process using the same pipeline as /api/process-text
+        added, updated, not_found, warnings = await process_extracted_items(items_list)
+
+        # Build reply
+        lines = []
+        if added:
+            for item in added:
+                loc = item.get("storage_location", "")
+                loc_hint = f" (📍 {loc})" if loc and loc != "unknown" else ""
+                lines.append(f"➕ *{item['item_name'].capitalize()}* added{loc_hint} — {item.get('days_remaining','?')}d left")
         if updated:
-            # Expire this session so they can't re-apply
-            await db.alert_sessions.update_one(
-                {"session_id": session["session_id"]},
-                {"$set": {"expires_at": now_iso}}
-            )
-            reply = "📦 *savex updated!*\n\n" + "\n".join(updated) + "\n\nGreat job reducing waste! 🌱"
-        else:
-            reply = (
-                "🤔 *savex* couldn't quite parse that.\n\n"
-                "Try something like:\n"
-                "• _\"used the paneer\"_\n"
-                "• _\"1 wasted\"_\n"
-                "• _\"all used\"_"
-            )
+            for item in updated:
+                st = item.get("status", "")
+                icon = "✅" if st == "used" else "🗑️"
+                lines.append(f"{icon} *{item.get('normalized_name','').capitalize()}* → {st}")
+        if warnings:
+            for w in warnings:
+                lines.append(f"⚠️ *{w['name'].capitalize()}* already in inventory (added as batch #{w['new_batch']})")
+        if not_found:
+            for nf in not_found:
+                lines.append(f"❓ *{nf['name'].capitalize()}* — not found in inventory")
 
-        _send_whatsapp(reply)
-        return {"status": "ok", "updated": updated}
+        _send_whatsapp("📦 *savex updated!*\n\n" + "\n".join(lines) + "\n\nInventory synced 🌱")
+        return {"status": "ok", "added": len(added), "updated": len(updated)}
 
     except Exception as e:
         logger.error(f"WhatsApp webhook error: {e}", exc_info=True)
+        _send_whatsapp("⚠️ savex had a hiccup. Please try again!")
         return {"status": "error", "detail": str(e)}
 
 
