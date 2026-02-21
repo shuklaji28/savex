@@ -431,13 +431,14 @@ async def process_voice(audio: UploadFile = File(...)):
         items_list = extracted.get("items", [])
 
         # 3. Process and save each item (handles add + mark_used + mark_wasted)
-        added, updated, not_found = await process_extracted_items(items_list)
+        added, updated, not_found, warnings = await process_extracted_items(items_list)
 
         return {
             "transcript": transcript,
-            "items": added,           # backward compat: added items
-            "updated_items": updated, # existing items whose status changed
-            "not_found": not_found,   # items user mentioned but not in inventory
+            "items": added,
+            "updated_items": updated,
+            "not_found": not_found,
+            "warnings": warnings,
             "count": len(added) + len(updated),
         }
 
