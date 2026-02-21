@@ -729,10 +729,10 @@ async def _job_expiry_alert():
             return
 
         body = (
-            "🚨 *SaveX — Expiry Alert*\n\n"
+            "🚨 *savex — Expiry Alert*\n\n"
             "These items need your attention soon:\n"
             + "\n".join(urgent_lines)
-            + "\n\nOpen SaveX and use them up before they go to waste! 🌱"
+            + "\n\nOpen savex and use them up before they go to waste! 🌱"
         )
         _send_whatsapp(body)
     except Exception as e:
@@ -789,9 +789,9 @@ Keep it concise and practical."""
         ))
 
         body = (
-            "🍳 *SaveX — Good Morning! Here's what to cook today:*\n\n"
+            "🍳 *savex — Good Morning! Here's what to cook today:*\n\n"
             + response.strip()
-            + "\n\n_Open SaveX > Cook tab for more recipe ideas!_ 🌱"
+            + "\n\n_Open savex > Cook tab for more recipe ideas!_ 🌱"
         )
         _send_whatsapp(body)
     except Exception as e:
@@ -848,9 +848,9 @@ Keep it concise and under 200 words."""
         ))
 
         body = (
-            f"{meal_emoji} *SaveX — What to cook for {meal.capitalize()} tonight:*\n\n"
+            f"{meal_emoji} *savex — What to cook for {meal.capitalize()} tonight:*\n\n"
             + response.strip()
-            + "\n\n_Open SaveX > Cook tab for more ideas!_ 🌱"
+            + "\n\n_Open savex > Cook tab for more ideas!_ 🌱"
         )
         _send_whatsapp(body)
     except Exception as e:
