@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, ScrollView,
-  RefreshControl, ActivityIndicator,
+  RefreshControl, ActivityIndicator, TouchableOpacity,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -21,6 +22,7 @@ type HistoryItem = {
 };
 
 export default function HistoryScreen() {
+  const router = useRouter();
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,6 +44,19 @@ export default function HistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Custom header with back button */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          testID="history-back-btn"
+          style={styles.backBtn}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#F5F5DC" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Past Items</Text>
+        <View style={styles.backBtn} />
+      </View>
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -90,6 +105,13 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0A' },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#18181B',
+    borderBottomWidth: 1, borderBottomColor: '#27272A',
+  },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: '#F5F5DC' },
   scroll: { flex: 1 },
   scrollContent: { padding: 24, paddingBottom: 100 },
   centerState: { alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 8 },
