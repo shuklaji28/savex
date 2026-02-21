@@ -119,12 +119,17 @@ class TestMarkWastedIntent:
         assert updated_milk["status"] == "wasted", f"Expected status=wasted, got {updated_milk['status']}"
         print(f"✓ Milk marked as wasted: {updated_milk}")
 
-        # Step 3: Verify milk is no longer active
+        # Step 3: Verify the specific updated milk item is no longer active
         time.sleep(0.5)
+        updated_milk_id = updated_milk["id"]
         inv_resp = api_client.get(f"{BASE_URL}/api/inventory")
-        active_names = [i["normalized_name"] for i in inv_resp.json().get("items", [])]
-        assert not any("milk" == n for n in active_names), f"milk still in active inventory: {active_names}"
-        print(f"✓ Milk no longer in active inventory")
+        active_ids = [i["id"] for i in inv_resp.json().get("items", [])]
+        assert updated_milk_id not in active_ids, f"Updated milk (id={updated_milk_id}) still in active inventory"
+        # Verify in history
+        hist_resp = api_client.get(f"{BASE_URL}/api/inventory/history")
+        hist_ids = [i["id"] for i in hist_resp.json().get("items", [])]
+        assert updated_milk_id in hist_ids, f"Updated milk (id={updated_milk_id}) not found in history"
+        print(f"✓ Milk (id={updated_milk_id}) confirmed removed from inventory and added to history")
         print("✓ test_milk_expired PASSED")
 
 
