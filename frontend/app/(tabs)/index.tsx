@@ -348,9 +348,12 @@ export default function HomeScreen() {
                 <Ionicons name="open-outline" size={16} color="#0A0A0A" />
                 <Text style={s.openTabText}>Open in New Tab</Text>
               </TouchableOpacity>
-              <TouchableOpacity testID="use-text-instead-btn" onPress={() => { setError(null); setShowTextInput(true); }} style={s.switchBtn}>
-                <Text style={s.switchText}>or type instead</Text>
-              </TouchableOpacity>
+          {/* DEV ONLY: text input mode — commented out for production
+          <TouchableOpacity testID="use-text-instead-btn" onPress={() => { setError(null); }} style={s.switchBtn}>
+            <Text style={s.switchText}>or type instead</Text>
+          </TouchableOpacity>
+          */}
+
             </View>
           )}
 
