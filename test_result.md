@@ -101,3 +101,98 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Voice-first food waste reduction app. Users log groceries and food status via voice. Core new feature: voice input should detect intent - if user says they used/wasted an existing item, it should update that item's status in inventory automatically instead of adding a new entry."
+
+backend:
+  - task: "Intent detection in Gemini extraction prompt"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated EXTRACTION_SYSTEM_PROMPT to classify each item's intent as add/mark_used/mark_wasted based on context words. Added examples for each intent."
+
+  - task: "process_extracted_items shared function - routes add vs update intents"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Created async process_extracted_items() that handles both intents. For mark_used/mark_wasted: finds matching active item by exact name, then regex partial match, then reverse partial match, and updates its status. For add: existing create flow."
+
+  - task: "find_active_item_by_name fuzzy matching"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New helper: tries exact match, then regex match, then reverse partial (e.g. 'milk' in 'full cream milk'). Returns first active match."
+
+  - task: "/api/process-voice endpoint - uses new shared function"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated to use process_extracted_items(). Returns items (added), updated_items, not_found, count."
+
+  - task: "/api/process-text endpoint - uses new shared function"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated to use process_extracted_items(). Returns items (added), updated_items, not_found, count."
+
+frontend:
+  - task: "Result card shows added vs updated items separately"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated ProcessResult type to include updated_items and not_found. Result card now has separate sections: '+ Added N items' (green) and '✓ Updated N items' (grey with used/wasted color dot). Not found items shown in amber."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Intent detection in Gemini extraction prompt"
+    - "process_extracted_items shared function - routes add vs update intents"
+    - "Result card shows added vs updated items separately"
+  stuck_tasks: []
+  test_all: true
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Implemented intent-based voice processing. Test the full flow: 1) Add a few items via text (e.g. 'I bought milk and tomatoes'). 2) Then say/type something like 'the milk expired' or 'I used the tomatoes' and verify those items are marked as wasted/used in inventory instead of creating new entries. 3) Verify the result card clearly shows added vs updated items. Also test a mixed input like 'I bought eggs and threw away the milk'."
