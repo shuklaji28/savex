@@ -395,44 +395,16 @@ async def process_voice(audio: UploadFile = File(...)):
         extracted = parse_json_from_llm(response)
         items_list = extracted.get("items", [])
 
-        # 3. Process and save each item
-        saved_items = []
-        for item_data in items_list:
-            expiry = compute_expiry(item_data)
-            days_remaining, urgency = compute_urgency(expiry)
-            name = item_data.get("normalized_name", item_data.get("item_name", "unknown"))
-            qty = item_data.get("quantity", 1)
-            unit = item_data.get("unit", "count")
-            category = item_data.get("category", get_category(name))
-            weight = estimate_weight_grams(name, qty, unit)
-            cost = estimate_cost_inr(weight, category)
+        # 3. Process and save each item (handles add + mark_used + mark_wasted)
+        added, updated, not_found = await process_extracted_items(items_list)
 
-            food_doc = {
-                "id": str(uuid.uuid4()),
-                "item_name": item_data.get("item_name", name),
-                "normalized_name": name,
-                "quantity": qty,
-                "unit": unit,
-                "approximate_quantity": item_data.get("approximate_quantity", False),
-                "storage_location": item_data.get("storage_location", "unknown"),
-                "category": category,
-                "added_date": item_data.get("added_date", date.today().isoformat()),
-                "expiry_date": expiry,
-                "status": "active",
-                "action_date": None,
-                "estimated_weight_grams": weight,
-                "estimated_cost_inr": cost,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            await db.food_items.insert_one(food_doc)
-            days_remaining, urgency = compute_urgency(expiry)
-            food_doc["days_remaining"] = days_remaining
-            food_doc["urgency_level"] = urgency
-            food_doc.pop("_id", None)
-            saved_items.append(food_doc)
-
-        return {"transcript": transcript, "items": saved_items, "count": len(saved_items)}
+        return {
+            "transcript": transcript,
+            "items": added,           # backward compat: added items
+            "updated_items": updated, # existing items whose status changed
+            "not_found": not_found,   # items user mentioned but not in inventory
+            "count": len(added) + len(updated),
+        }
 
     except Exception as e:
         logger.error(f"Error processing voice: {e}", exc_info=True)
