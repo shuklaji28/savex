@@ -1034,7 +1034,8 @@ async def whatsapp_webhook(request: Request):
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         today_iso = date.today().isoformat()
 
-        # Run full Gemini extraction — same pipeline as voice/text input
+        # Run full Gemini extraction — inventory-aware (same pipeline as voice/text input)
+        inventory_context = await build_inventory_context()
         chat = LlmChat(
             api_key=api_key,
             session_id=str(uuid.uuid4()),
@@ -1042,7 +1043,7 @@ async def whatsapp_webhook(request: Request):
         ).with_model("gemini", "gemini-3-flash-preview")
 
         response = await chat.send_message(LLMUserMessage(
-            text=f"Current date: {today_iso}\n\nUser message: {user_message}"
+            text=f"Current date: {today_iso}\n\n{inventory_context}\n\nUser message: {user_message}"
         ))
         extracted = parse_json_from_llm(response)
         items_list = extracted.get("items", [])
