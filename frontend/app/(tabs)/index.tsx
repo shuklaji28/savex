@@ -286,7 +286,7 @@ export default function HomeScreen() {
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={s.header}>
           <Text style={s.title}>savex</Text>
-          <Text style={s.subtitle}>{showTextInput ? 'type to log expiry and items' : 'speak to log expiry and items'}</Text>
+          <Text style={s.subtitle}>speak to log expiry and items</Text>
         </View>
 
         <View style={s.center}>
