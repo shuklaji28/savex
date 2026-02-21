@@ -33,6 +33,7 @@ type ProcessResult = {
   items: FoodItem[];
   updated_items?: UpdatedItem[];
   not_found?: { name: string; intent: string }[];
+  warnings?: { name: string; existing_batches: number; new_batch: number; oldest_added: string }[];
   count: number;
   error?: string;
 };
