@@ -17,11 +17,8 @@ export default function RootLayout() {
         <Stack.Screen
           name="history"
           options={{
-            headerShown: true,
-            headerTitle: 'Past Items',
-            headerStyle: { backgroundColor: '#18181B' },
-            headerTintColor: '#F5F5DC',
-            presentation: 'modal',
+            headerShown: false,
+            animation: 'slide_from_right',
           }}
         />
       </Stack>
