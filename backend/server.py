@@ -476,18 +476,19 @@ async def process_text(req: dict):
         extracted = parse_json_from_llm(response)
         items_list = extracted.get("items", [])
 
-        added, updated, not_found = await process_extracted_items(items_list)
+        added, updated, not_found, warnings = await process_extracted_items(items_list)
 
         return {
             "transcript": transcript,
             "items": added,
             "updated_items": updated,
             "not_found": not_found,
+            "warnings": warnings,
             "count": len(added) + len(updated),
         }
     except Exception as e:
         logger.error(f"Error processing text: {e}", exc_info=True)
-        return {"error": str(e), "transcript": transcript, "items": [], "updated_items": [], "count": 0}
+        return {"error": str(e), "transcript": transcript, "items": [], "updated_items": [], "warnings": [], "count": 0}
 
 
 @api_router.get("/inventory")
