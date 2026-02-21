@@ -894,7 +894,9 @@ async def _job_expiry_alert():
             days, urgency = compute_urgency(item.get("expiry_date", ""))
             if urgency in ("critical", "urgent") and days > 0:
                 label = "expires *today*" if days == 1 else f"expires in *{days} days*"
-                urgent_lines.append(f"• {item['normalized_name'].capitalize()} — {label}")
+                loc = item.get("storage_location", "unknown")
+                loc_hint = f" (📍 {loc})" if loc and loc != "unknown" else ""
+                urgent_lines.append(f"• {item['normalized_name'].capitalize()}{loc_hint} — {label}")
                 cook_suggestions.append(item['normalized_name'])
 
         if not urgent_lines:
