@@ -857,8 +857,21 @@ Keep it concise and under 200 words."""
         logger.error(f"{meal} suggestion job error: {e}")
 
 
-
+@api_router.post("/notifications/test")
 async def test_notification(req: dict):
+    """Trigger WhatsApp notifications manually. type: expiry | recipe | dinner | both"""
+    ntype = req.get("type", "both")
+    results = {}
+    if ntype in ("expiry", "both"):
+        await _job_expiry_alert()
+        results["expiry"] = "triggered"
+    if ntype in ("recipe", "both"):
+        await _job_daily_recipe()
+        results["recipe"] = "triggered"
+    if ntype == "dinner":
+        await _job_meal_suggestion("dinner")
+        results["dinner"] = "triggered"
+    return {"status": "ok", "triggered": results}
 
 
 # ─── SCHEDULER SETUP ───
