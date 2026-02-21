@@ -1,0 +1,188 @@
+{
+  "design_system": {
+    "identity": {
+      "name": "Sustain",
+      "personality": "The Modern Home Manager",
+      "tone": "Efficient, Calm, Guilt-free, Rewarding",
+      "visual_mood": "Digital Organic - where clean tech meets natural textures"
+    },
+    "typography": {
+      "font_family": {
+        "headings": "Space Grotesk",
+        "body": "Outfit",
+        "fallback": "System"
+      },
+      "scale": {
+        "h1": { "fontSize": 32, "lineHeight": 40, "fontWeight": "700", "letterSpacing": -0.5 },
+        "h2": { "fontSize": 24, "lineHeight": 32, "fontWeight": "600", "letterSpacing": -0.3 },
+        "h3": { "fontSize": 20, "lineHeight": 28, "fontWeight": "600" },
+        "body_lg": { "fontSize": 18, "lineHeight": 28, "fontWeight": "400" },
+        "body_md": { "fontSize": 16, "lineHeight": 24, "fontWeight": "400" },
+        "caption": { "fontSize": 14, "lineHeight": 20, "fontWeight": "500", "color": "#A1A1AA" }
+      }
+    },
+    "colors": {
+      "palette": {
+        "background": {
+          "primary": "#0A0A0A",
+          "secondary": "#18181B",
+          "tertiary": "#27272A"
+        },
+        "text": {
+          "primary": "#F5F5DC",
+          "secondary": "#A1A1AA",
+          "tertiary": "#52525B",
+          "inverse": "#09090B"
+        },
+        "brand": {
+          "cream": "#F5F5DC",
+          "cream_dim": "#E6E6C8",
+          "accent_glow": "rgba(245, 245, 220, 0.1)"
+        },
+        "functional": {
+          "success": "#10B981",
+          "warning": "#F59E0B",
+          "error": "#EF4444",
+          "info": "#3B82F6"
+        }
+      },
+      "gradients": {
+        "surface": ["#18181B", "#0A0A0A"],
+        "active_mic": ["#F5F5DC", "#E6E6C8"],
+        "warm_overlay": ["rgba(10,10,10,0)", "rgba(10,10,10,0.8)"]
+      }
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 16,
+      "lg": 24,
+      "xl": 32,
+      "xxl": 48,
+      "section_gap": 32,
+      "screen_padding": 20
+    },
+    "borders": {
+      "radius": {
+        "sm": 8,
+        "md": 16,
+        "lg": 24,
+        "full": 9999
+      },
+      "width": {
+        "thin": 1,
+        "thick": 2
+      },
+      "colors": {
+        "subtle": "#27272A",
+        "highlight": "#3F3F46"
+      }
+    },
+    "shadows": {
+      "glow": {
+        "shadowColor": "#F5F5DC",
+        "shadowOffset": { "width": 0, "height": 0 },
+        "shadowOpacity": 0.15,
+        "shadowRadius": 20,
+        "elevation": 5
+      },
+      "card": {
+        "shadowColor": "#000000",
+        "shadowOffset": { "width": 0, "height": 4 },
+        "shadowOpacity": 0.3,
+        "shadowRadius": 8,
+        "elevation": 4
+      }
+    }
+  },
+  "layout_strategies": {
+    "safe_area": "All screens must use SafeAreaView from react-native-safe-area-context",
+    "containers": "Use Flexbox for everything. Main containers usually flex: 1, backgroundColor: colors.background.primary",
+    "cards": "Use View with borderRadius.lg, backgroundColor: colors.background.secondary, and padding.md",
+    "lists": "Use FlatList for performance. Add contentContainerStyle={{ paddingBottom: 100 }} to avoid bottom tab overlap",
+    "touch_targets": "Ensure all TouchableOpacity/Pressable have minHeight: 48 and minWidth: 48",
+    "z_index": {
+      "modal": 1000,
+      "toast": 2000,
+      "mic_overlay": 500
+    }
+  },
+  "components": {
+    "MicButton": {
+      "description": "Central floating action button for voice input. Must pulse when active.",
+      "styles": {
+        "container": {
+          "width": 80,
+          "height": 80,
+          "borderRadius": 40,
+          "backgroundColor": "#F5F5DC",
+          "justifyContent": "center",
+          "alignItems": "center",
+          "shadowColor": "#F5F5DC",
+          "shadowOpacity": 0.3,
+          "elevation": 10
+        },
+        "icon_color": "#0A0A0A"
+      },
+      "animation": "Pulse scale from 1 to 1.1 repeatedly when active state is true"
+    },
+    "InventoryItem": {
+      "description": "Swipeable list item. Left swipe (Green/Used), Right swipe (Red/Wasted).",
+      "layout": "Row with image/icon on left, text details in middle, expiry badge on right",
+      "expiry_badges": {
+        "fresh": { "bg": "rgba(16, 185, 129, 0.1)", "text": "#10B981" },
+        "soon": { "bg": "rgba(245, 158, 11, 0.1)", "text": "#F59E0B" },
+        "expired": { "bg": "rgba(239, 68, 68, 0.1)", "text": "#EF4444" }
+      }
+    },
+    "ImpactCard": {
+      "description": "Bento-grid style stats card.",
+      "styles": {
+        "backgroundColor": "#18181B",
+        "borderColor": "#27272A",
+        "borderWidth": 1,
+        "padding": 16,
+        "borderRadius": 16
+      }
+    }
+  },
+  "assets": {
+    "icons": {
+      "library": "lucide-react-native",
+      "style": "Stroke width 1.5 or 2",
+      "mapping": {
+        "inventory": "Refrigerator",
+        "recipes": "ChefHat",
+        "reports": "BarChart3",
+        "mic": "Mic",
+        "history": "Clock",
+        "settings": "Settings"
+      }
+    },
+    "images": {
+      "recipe_placeholder": "https://images.pexels.com/photos/3296587/pexels-photo-3296587.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "empty_state": "https://images.pexels.com/photos/2067412/pexels-photo-2067412.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "mic_background": "https://images.pexels.com/photos/8118270/pexels-photo-8118270.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+    }
+  },
+  "technical_constraints": {
+    "styling": "Use StyleSheet.create(). NO styled-components. NO Tailwind classes (unless using NativeWind, but assume StyleSheet for raw React Native).",
+    "theme": "Dark Mode Default. No light mode toggle required for MVP.",
+    "animations": "Use react-native-reanimated for complex animations (mic pulse, swipe) and LayoutAnimation for simple list updates.",
+    "navigation": "Use standard React Navigation Bottom Tabs with transparent background and blur effect if possible (expo-blur)."
+  },
+  "universal_guidelines": [
+    "Design for thumbs: Important actions at the bottom.",
+    "Feedback is key: Every voice command must have visual confirmation (ripple, text transcript).",
+    "Zero Clutter: If it doesn't help reduce waste, remove it.",
+    "Speed: The user should be in and out in 10 seconds. Auto-categorize voice input.",
+    "Accessibility: Ensure high contrast text (#F5F5DC on #0A0A0A) passes WCAG AAA."
+  ],
+  "instructions_to_main_agent": [
+    "1. Setup navigation with a custom Tab Bar that hosts the floating Mic button in the center.",
+    "2. Implement the Voice Interface first - it is the core feature.",
+    "3. Use the 'InventoryItem' component structure for the list.",
+    "4. Ensure swipe gestures work smoothly using Reanimated Swipeable.",
+    "5. Mock the Voice-to-Text if API keys are missing, but build the UI to handle the 'Listening' state."
+  ]
+}
