@@ -515,10 +515,12 @@ async def get_recipes():
     if not items:
         return {"recipes": [], "expiring_items": []}
 
-    # Build a list of all active items sorted by days remaining
+    # Build a list of all active items sorted by days remaining — exclude already expired
     all_with_urgency = []
     for item in items:
         days_remaining, urgency = compute_urgency(item.get("expiry_date", ""))
+        if days_remaining <= 0:
+            continue  # skip expired items — nothing to cook with
         all_with_urgency.append({
             "name": item["normalized_name"],
             "quantity": item["quantity"],
@@ -528,10 +530,10 @@ async def get_recipes():
         })
     all_with_urgency.sort(key=lambda x: x["days_remaining"])
 
-    # Prefer truly expiring items; fall back to the 5 soonest-to-expire items
-    expiring = [i for i in all_with_urgency if i["urgency"] in ("expired", "critical", "urgent", "upcoming")]
+    # Prefer truly near-expiry items; fall back to the 5 soonest-to-expire fresh items
+    expiring = [i for i in all_with_urgency if i["urgency"] in ("critical", "urgent", "upcoming")]
     if not expiring:
-        expiring = all_with_urgency[:5]  # use soonest items even if all fresh
+        expiring = all_with_urgency[:5]  # use soonest fresh items if nothing is urgent
 
     expiring = expiring[:10]
 
