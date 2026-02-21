@@ -690,6 +690,140 @@ async def get_notifications():
     return {"notify_today": notify, "expired_items": expired, "cook_today": cook_today}
 
 
+# ─── WHATSAPP NOTIFICATION SYSTEM ───
+
+TWILIO_SID   = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+WA_FROM      = os.environ.get("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+WA_TO        = os.environ.get("USER_WHATSAPP_TO", "")
+
+def _send_whatsapp(body: str) -> bool:
+    """Send a WhatsApp message via Twilio. Returns True on success."""
+    if not (TWILIO_SID and TWILIO_TOKEN and WA_TO):
+        logger.warning("Twilio credentials not configured — skipping WhatsApp send")
+        return False
+    try:
+        from twilio.rest import Client as TwilioClient
+        tc = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
+        msg = tc.messages.create(body=body, from_=WA_FROM, to=WA_TO)
+        logger.info(f"WhatsApp sent: {msg.sid}")
+        return True
+    except Exception as e:
+        logger.error(f"Twilio error: {e}")
+        return False
+
+
+async def _job_expiry_alert():
+    """Evening job (8 PM IST): alert for items expiring within 3 days."""
+    try:
+        items = await db.food_items.find({"status": "active"}, {"_id": 0}).to_list(1000)
+        urgent_lines = []
+        for item in items:
+            days, urgency = compute_urgency(item.get("expiry_date", ""))
+            if urgency in ("critical", "urgent") and days > 0:
+                label = "expires *today*" if days == 1 else f"expires in *{days} days*"
+                urgent_lines.append(f"• {item['normalized_name'].capitalize()} — {label}")
+
+        if not urgent_lines:
+            logger.info("Expiry alert: no urgent items, skipping WhatsApp")
+            return
+
+        body = (
+            "🚨 *SaveX — Expiry Alert*\n\n"
+            "These items need your attention soon:\n"
+            + "\n".join(urgent_lines)
+            + "\n\nOpen SaveX and use them up before they go to waste! 🌱"
+        )
+        _send_whatsapp(body)
+    except Exception as e:
+        logger.error(f"Expiry alert job error: {e}")
+
+
+async def _job_daily_recipe():
+    """Morning job (8 AM IST): WhatsApp recipe suggestion using expiring items."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    try:
+        api_key = os.environ.get("EMERGENT_LLM_KEY")
+        items = await db.food_items.find({"status": "active"}, {"_id": 0}).to_list(1000)
+
+        # Pick items to cook with: near-expiry first, else soonest 5
+        candidates = []
+        for item in items:
+            days, urgency = compute_urgency(item.get("expiry_date", ""))
+            if days > 0:
+                candidates.append((days, urgency, item["normalized_name"], item["quantity"], item["unit"]))
+        candidates.sort(key=lambda x: x[0])
+
+        near_expiry = [(d, u, n, q, un) for d, u, n, q, un in candidates if u in ("critical", "urgent", "upcoming")]
+        use_these = near_expiry[:5] if near_expiry else candidates[:5]
+
+        if not use_these:
+            logger.info("Daily recipe: no active items, skipping")
+            return
+
+        items_text = "\n".join([f"- {n} ({q} {un}, {d} days left)" for d, u, n, q, un in use_these])
+
+        WHATSAPP_RECIPE_PROMPT = """You are a home cook assistant. Suggest ONE simple recipe using the provided ingredients.
+Keep it under 15 minutes. Format your reply EXACTLY like this (plain text, no JSON):
+
+Recipe: <name>
+Time: <X> min
+Uses: <comma-separated expiring items>
+Needs: <other basic pantry items>
+Steps:
+1. <step>
+2. <step>
+3. <step>
+Tip: <one quick tip>
+
+Keep it concise and practical."""
+
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=str(uuid.uuid4()),
+            system_message=WHATSAPP_RECIPE_PROMPT
+        ).with_model("gemini", "gemini-3-flash-preview")
+
+        response = await chat.send_message(UserMessage(
+            text=f"Today is {date.today().strftime('%A, %d %B %Y')}.\n\nItems to use up:\n{items_text}"
+        ))
+
+        body = (
+            "🍳 *SaveX — Good Morning! Here's what to cook today:*\n\n"
+            + response.strip()
+            + "\n\n_Open SaveX > Cook tab for more recipe ideas!_ 🌱"
+        )
+        _send_whatsapp(body)
+    except Exception as e:
+        logger.error(f"Daily recipe job error: {e}")
+
+
+@api_router.post("/notifications/test")
+async def test_notification(req: dict):
+    """
+    Manually trigger a WhatsApp notification for testing.
+    Body: { "type": "expiry" | "recipe" | "both" }
+    """
+    ntype = req.get("type", "both")
+    results = {}
+    if ntype in ("expiry", "both"):
+        await _job_expiry_alert()
+        results["expiry"] = "triggered"
+    if ntype in ("recipe", "both"):
+        await _job_daily_recipe()
+        results["recipe"] = "triggered"
+    return {"status": "ok", "triggered": results}
+
+
+# ─── SCHEDULER SETUP ───
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
+
+_scheduler = AsyncIOScheduler(timezone=pytz.timezone("Asia/Kolkata"))
+
+
 # Include router
 app.include_router(api_router)
 
@@ -701,6 +835,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def start_scheduler():
+    # 8:00 AM IST — morning recipe suggestion
+    _scheduler.add_job(
+        _job_daily_recipe, CronTrigger(hour=8, minute=0, timezone=pytz.timezone("Asia/Kolkata")),
+        id="daily_recipe", replace_existing=True
+    )
+    # 8:00 PM IST — evening expiry alert
+    _scheduler.add_job(
+        _job_expiry_alert, CronTrigger(hour=20, minute=0, timezone=pytz.timezone("Asia/Kolkata")),
+        id="expiry_alert", replace_existing=True
+    )
+    _scheduler.start()
+    logger.info("Notification scheduler started (8 AM recipe + 8 PM expiry alert, IST)")
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    _scheduler.shutdown(wait=False)
     client.close()
+
