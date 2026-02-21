@@ -55,10 +55,10 @@
     "home_screen": "✅ Confirmed: title='sustain', mic button, 'or type instead' switch button all present",
     "text_mode_switch": "✅ Clicking 'or type instead' switches to text input mode; subtitle changes to 'type what you bought'",
     "text_input": "✅ TextInput with testID='text-input' and send button testID='send-text-btn' both functional",
-    "result_card_added_section": "Code verified: addedItems.length > 0 → green '+ Added N item(s)' section rendered",
-    "result_card_updated_section": "Code verified: updatedItems.length > 0 → grey '✓ Updated N item(s)' section rendered",
-    "result_card_not_found_section": "Code verified: notFoundItems.length > 0 → amber 'Not found in inventory' section rendered",
-    "full_flow_ui": "Could not complete automated UI flow test due to Expo ngrok flapping"
+    "result_card_add": "✅ CONFIRMED: 'I bought cabbage and ketchup' → shows '+ Added 2 items' in green with each item name and days remaining",
+    "result_card_updated_wasted": "✅ CONFIRMED: 'the cabbage spoiled, threw it away' → shows '✓ Updated 1 item / cabbage / marked wasted' (red color)",
+    "result_card_mixed": "✅ CONFIRMED: 'I bought eggs and threw away the ketchup' → shows BOTH '+ Added 1 item (egg)' AND '✓ Updated 1 item (ketchup marked wasted)' in same card",
+    "inventory_screen": "✅ Inventory loads correctly with 29 active items, grouped by urgency (Expired, Expiring Today, Expiring 1-2 Days)"
   },
   "rca_of_issue": "No functional bugs found. Test failure during first run was a test assertion issue (too strict check for ALL milk items; database had multiple milk items from seed data). Fixed to check specific item ID instead. Expo server instability is an infrastructure/environment issue with ngrok tunnel, not a code issue."
 }
