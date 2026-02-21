@@ -282,6 +282,7 @@ export default function HomeScreen() {
   const addedItems = result?.items || [];
   const updatedItems = result?.updated_items || [];
   const notFoundItems = result?.not_found || [];
+  const warningItems = result?.warnings || [];
 
   return (
     <SafeAreaView style={s.container}>
