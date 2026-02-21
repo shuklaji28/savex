@@ -28,6 +28,10 @@ type ProcessResult = {
   error?: string;
 };
 
+// Web-only: use browser MediaRecorder API
+let webMediaRecorder: any = null;
+let webAudioChunks: Blob[] = [];
+
 export default function HomeScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -71,63 +75,167 @@ export default function HomeScreen() {
   }, [result]);
 
   async function checkPermission() {
-    try {
-      const { status } = await Audio.requestPermissionsAsync();
-      setPermissionGranted(status === 'granted');
-    } catch {
-      setPermissionGranted(false);
+    if (Platform.OS === 'web') {
+      // On web, check browser mic permission
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop()); // release immediately
+        setPermissionGranted(true);
+      } catch {
+        // Try requesting again on user gesture
+        setPermissionGranted(false);
+      }
+    } else {
+      // On native, use expo-av permissions
+      try {
+        const { status } = await Audio.requestPermissionsAsync();
+        setPermissionGranted(status === 'granted');
+      } catch {
+        setPermissionGranted(false);
+      }
+    }
+  }
+
+  async function requestAndGrantPermission() {
+    if (Platform.OS === 'web') {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+        setPermissionGranted(true);
+        return true;
+      } catch (e: any) {
+        setError('Microphone access denied. Please allow mic access in your browser settings.');
+        return false;
+      }
+    } else {
+      try {
+        const { status } = await Audio.requestPermissionsAsync();
+        if (status === 'granted') {
+          setPermissionGranted(true);
+          return true;
+        }
+        setError('Microphone permission denied. Please grant access in Settings.');
+        return false;
+      } catch {
+        return false;
+      }
     }
   }
 
   async function startRecording() {
     setError(null);
     setResult(null);
-    try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      recordingRef.current = recording;
-      setIsRecording(true);
-    } catch (e: any) {
-      setError('Mic not available. Use text input instead.');
-      setShowTextInput(true);
+
+    // Ensure permission
+    if (!permissionGranted) {
+      const granted = await requestAndGrantPermission();
+      if (!granted) return;
+    }
+
+    if (Platform.OS === 'web') {
+      // Use browser MediaRecorder API directly
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        webAudioChunks = [];
+        webMediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        webMediaRecorder.ondataavailable = (event: any) => {
+          if (event.data.size > 0) {
+            webAudioChunks.push(event.data);
+          }
+        };
+        webMediaRecorder.start();
+        setIsRecording(true);
+      } catch (e: any) {
+        console.error('Web recording error:', e);
+        setError('Microphone access failed: ' + e.message + '. Check browser permissions.');
+      }
+    } else {
+      // Native: use expo-av
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+        });
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        recordingRef.current = recording;
+        setIsRecording(true);
+      } catch (e: any) {
+        console.error('Native recording error:', e);
+        setError('Recording failed: ' + e.message);
+      }
     }
   }
 
   async function stopRecording() {
-    if (!recordingRef.current) return;
     setIsRecording(false);
     setIsProcessing(true);
+
+    if (Platform.OS === 'web') {
+      // Web: stop MediaRecorder and send blob
+      try {
+        if (!webMediaRecorder) throw new Error('No active recording');
+        await new Promise<void>((resolve) => {
+          webMediaRecorder.onstop = () => resolve();
+          webMediaRecorder.stop();
+        });
+        // Stop all tracks
+        webMediaRecorder.stream.getTracks().forEach((track: any) => track.stop());
+        const blob = new Blob(webAudioChunks, { type: 'audio/webm' });
+        webAudioChunks = [];
+        webMediaRecorder = null;
+        if (blob.size === 0) throw new Error('Empty recording');
+        await sendAudioBlob(blob);
+      } catch (e: any) {
+        setError('Failed to process recording: ' + e.message);
+        setIsProcessing(false);
+      }
+    } else {
+      // Native: use expo-av
+      try {
+        if (!recordingRef.current) throw new Error('No active recording');
+        await recordingRef.current.stopAndUnloadAsync();
+        const uri = recordingRef.current.getURI();
+        recordingRef.current = null;
+        if (!uri) throw new Error('No recording URI');
+        await sendAudioNative(uri);
+      } catch (e: any) {
+        setError('Failed to process: ' + e.message);
+        setIsProcessing(false);
+      }
+    }
+  }
+
+  async function sendAudioBlob(blob: Blob) {
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
-      if (!uri) throw new Error('No recording URI');
-      await sendAudio(uri);
+      const formData = new FormData();
+      formData.append('audio', blob, 'recording.webm');
+      const res = await fetch(`${API_URL}/api/process-voice`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data: ProcessResult = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setResult(data);
+      }
     } catch (e: any) {
-      setError('Failed to process: ' + e.message);
+      setError('Network error: ' + e.message);
+    } finally {
       setIsProcessing(false);
     }
   }
 
-  async function sendAudio(uri: string) {
+  async function sendAudioNative(uri: string) {
     try {
       const formData = new FormData();
-      if (Platform.OS === 'web') {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        formData.append('audio', blob, 'recording.webm');
-      } else {
-        formData.append('audio', {
-          uri,
-          name: 'recording.m4a',
-          type: 'audio/m4a',
-        } as any);
-      }
+      formData.append('audio', {
+        uri,
+        name: 'recording.m4a',
+        type: 'audio/m4a',
+      } as any);
       const res = await fetch(`${API_URL}/api/process-voice`, {
         method: 'POST',
         body: formData,
@@ -206,7 +314,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.center}>
-          {/* Result display - shown prominently when items are added */}
+          {/* Result display */}
           {showResult && (
             <Animated.View style={[styles.resultBox, { opacity: fadeAnim }]}>
               <Text style={styles.resultTitle}>
@@ -218,9 +326,7 @@ export default function HomeScreen() {
               {result!.items.map((item, i) => (
                 <View key={item.id || i} style={styles.resultItem}>
                   <View style={[styles.urgencyDot, { backgroundColor: getUrgencyColor(item.urgency_level) }]} />
-                  <Text style={styles.resultItemName}>
-                    {item.normalized_name}
-                  </Text>
+                  <Text style={styles.resultItemName}>{item.normalized_name}</Text>
                   <Text style={styles.resultItemMeta}>
                     {item.quantity} {item.unit} · {item.days_remaining}d left
                   </Text>
@@ -232,13 +338,16 @@ export default function HomeScreen() {
           {error && (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity testID="dismiss-error-btn" onPress={() => setError(null)} style={styles.dismissBtn}>
+                <Text style={styles.dismissText}>Dismiss</Text>
+              </TouchableOpacity>
             </View>
           )}
 
           {isRecording && (
             <View style={styles.listeningBadge}>
               <View style={styles.redDot} />
-              <Text style={styles.listeningText}>Listening...</Text>
+              <Text style={styles.listeningText}>Listening... tap to stop</Text>
             </View>
           )}
           {isProcessing && (
@@ -364,13 +473,15 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: '#27272A' },
   errorBox: {
-    marginHorizontal: 24, marginBottom: 24, padding: 16,
+    marginHorizontal: 24, marginBottom: 16, padding: 16, width: '85%',
     backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12,
     borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)',
   },
   errorText: { color: '#EF4444', fontSize: 14 },
+  dismissBtn: { marginTop: 8, alignSelf: 'flex-end' },
+  dismissText: { color: '#A1A1AA', fontSize: 13, fontWeight: '500' },
   resultBox: {
-    marginHorizontal: 24, marginBottom: 24, padding: 16,
+    marginHorizontal: 24, marginBottom: 16, padding: 16, width: '85%',
     backgroundColor: '#18181B', borderRadius: 16, borderWidth: 1, borderColor: '#27272A',
   },
   resultTitle: { color: '#10B981', fontSize: 16, fontWeight: '600', marginBottom: 4 },
