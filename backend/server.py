@@ -867,29 +867,36 @@ async def _job_meal_suggestion(meal: str = "dinner"):
 
         items_text = "\n".join([f"- {n} ({q} {un}, {d} days left)" for d, u, n, q, un in use_these])
 
-        prompt_system = f"""You are a home cook assistant. Suggest ONE simple {meal} recipe using the provided ingredients.
-Keep it practical for an Indian household. Format your reply EXACTLY like this (plain text, no JSON):
+        # Also list other available (fresh) items for context
+        fresh_names = [n for d, u, n, q, un in candidates if (d, u, n, q, un) not in use_these][:5]
+        fresh_context = f"\nOther items available: {', '.join(fresh_names)}" if fresh_names else ""
+
+        WHATSAPP_RECIPE_PROMPT = f"""You are a home cook assistant helping reduce food waste. 
+Suggest ONE simple {meal} recipe that uses the priority expiring items listed.
+Keep it practical for an Indian household and under 15 minutes if possible.
+Format your reply EXACTLY like this (plain text, no JSON, no markdown headers):
 
 Recipe: <name>
 Time: <X> min
-Uses: <comma-separated expiring items>
-Needs: <other basic pantry items>
+Uses: <comma-separated expiring items from the list>
+Also needs: <1-2 basic pantry items max>
 Steps:
 1. <step>
 2. <step>
 3. <step>
-Tip: <one quick tip>
+Tip: <one quick waste-saving tip>
 
-Keep it concise and under 200 words."""
+Keep it under 180 words. Be warm and personal."""
 
         chat = LlmChat(
             api_key=api_key,
             session_id=str(uuid.uuid4()),
-            system_message=prompt_system
+            system_message=WHATSAPP_RECIPE_PROMPT
         ).with_model("gemini", "gemini-3-flash-preview")
 
+        expiry_label = "near-expiry" if near_expiry else "soonest to expire"
         response = await chat.send_message(UserMessage(
-            text=f"Today is {date.today().strftime('%A, %d %B %Y')}.\n\nItems to use up:\n{items_text}\n\nSuggest a {meal} recipe."
+            text=f"Today is {date.today().strftime('%A, %d %B %Y')}.\n\nPriority items to use ({expiry_label}):\n{items_text}{fresh_context}\n\nSuggest a {meal} recipe."
         ))
 
         body = (
