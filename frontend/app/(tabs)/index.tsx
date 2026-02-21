@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, SafeAreaView,
-  Animated, Platform, ActivityIndicator, TextInput,
-  KeyboardAvoidingView, Keyboard, Linking,
+  Animated, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
