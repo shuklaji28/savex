@@ -1,5 +1,5 @@
 {
-  "summary": "Backend intent classification feature tested end-to-end. All 6/6 new backend tests passed. Frontend UI confirmed working in brief windows (Expo server flapping due to ngrok tunnel failures prevents sustained automated UI testing). Core intent flow (add/mark_used/mark_wasted/mixed/not_found) fully verified via API.",
+  "summary": "Backend intent classification feature tested end-to-end. All 6/6 backend tests passed. All 3 frontend UI tests passed. Full intent flow verified: add, mark_wasted, mixed intent all render correctly in the result card UI. Inventory screen also verified. Core intent flow (add/mark_used/mark_wasted/mixed/not_found) fully functional.",
   "backend_issues": {
     "critical": [],
     "minor": []
