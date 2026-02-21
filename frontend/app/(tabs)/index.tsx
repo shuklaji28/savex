@@ -190,6 +190,8 @@ export default function HomeScreen() {
     }
   }
 
+  const showResult = result && result.items && result.items.length > 0;
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -204,6 +206,35 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.center}>
+          {/* Result display - shown prominently when items are added */}
+          {showResult && (
+            <Animated.View style={[styles.resultBox, { opacity: fadeAnim }]}>
+              <Text style={styles.resultTitle}>
+                Added {result!.count} item{result!.count !== 1 ? 's' : ''}
+              </Text>
+              {result!.transcript ? (
+                <Text style={styles.transcript}>"{result!.transcript}"</Text>
+              ) : null}
+              {result!.items.map((item, i) => (
+                <View key={item.id || i} style={styles.resultItem}>
+                  <View style={[styles.urgencyDot, { backgroundColor: getUrgencyColor(item.urgency_level) }]} />
+                  <Text style={styles.resultItemName}>
+                    {item.normalized_name}
+                  </Text>
+                  <Text style={styles.resultItemMeta}>
+                    {item.quantity} {item.unit} · {item.days_remaining}d left
+                  </Text>
+                </View>
+              ))}
+            </Animated.View>
+          )}
+
+          {error && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
           {isRecording && (
             <View style={styles.listeningBadge}>
               <View style={styles.redDot} />
@@ -239,7 +270,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </Animated.View>
 
-              {!isRecording && !isProcessing && !result && !error && (
+              {!isRecording && !isProcessing && !showResult && !error && (
                 <Text style={styles.hint}>Tap to start recording</Text>
               )}
 
@@ -286,34 +317,6 @@ export default function HomeScreen() {
             </View>
           )}
         </View>
-
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-
-        {result && result.items && result.items.length > 0 && (
-          <Animated.View style={[styles.resultBox, { opacity: fadeAnim }]}>
-            <Text style={styles.resultTitle}>
-              Added {result.count} item{result.count !== 1 ? 's' : ''}
-            </Text>
-            {result.transcript ? (
-              <Text style={styles.transcript}>"{result.transcript}"</Text>
-            ) : null}
-            {result.items.map((item, i) => (
-              <View key={item.id || i} style={styles.resultItem}>
-                <View style={[styles.urgencyDot, { backgroundColor: getUrgencyColor(item.urgency_level) }]} />
-                <Text style={styles.resultItemName}>
-                  {item.normalized_name}
-                </Text>
-                <Text style={styles.resultItemMeta}>
-                  {item.quantity} {item.unit} · {item.days_remaining}d left
-                </Text>
-              </View>
-            ))}
-          </Animated.View>
-        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
