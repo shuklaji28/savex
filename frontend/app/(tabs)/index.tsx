@@ -2,9 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, SafeAreaView,
   Animated, Platform, ActivityIndicator, TextInput,
-  KeyboardAvoidingView, Keyboard,
+  KeyboardAvoidingView, Keyboard, Linking,
 } from 'react-native';
-import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -28,9 +27,24 @@ type ProcessResult = {
   error?: string;
 };
 
-// Web-only: use browser MediaRecorder API
+// ── Platform-specific recording helpers ──
+// Web: browser MediaRecorder
 let webMediaRecorder: any = null;
-let webAudioChunks: Blob[] = [];
+let webChunks: any[] = [];
+
+// Native: expo-audio (lazy loaded to avoid web issues)
+let AudioModule: any = null;
+let useAudioRecorderRef: any = null;
+let RecordingPresetsRef: any = null;
+
+function isInIframe(): boolean {
+  if (Platform.OS !== 'web') return false;
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true; // cross-origin iframe
+  }
+}
 
 export default function HomeScreen() {
   const [isRecording, setIsRecording] = useState(false);
@@ -40,12 +54,13 @@ export default function HomeScreen() {
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
   const [textInput, setTextInput] = useState('');
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const [inIframe, setInIframe] = useState(false);
+  const [nativeRecorder, setNativeRecorder] = useState<any>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    checkPermission();
+    initAudio();
   }, []);
 
   useEffect(() => {
@@ -74,50 +89,33 @@ export default function HomeScreen() {
     }
   }, [result]);
 
-  async function checkPermission() {
+  async function initAudio() {
     if (Platform.OS === 'web') {
-      // On web, check browser mic permission
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(track => track.stop()); // release immediately
-        setPermissionGranted(true);
-      } catch {
-        // Try requesting again on user gesture
-        setPermissionGranted(false);
-      }
-    } else {
-      // On native, use expo-av permissions
-      try {
-        const { status } = await Audio.requestPermissionsAsync();
-        setPermissionGranted(status === 'granted');
-      } catch {
-        setPermissionGranted(false);
-      }
-    }
-  }
-
-  async function requestAndGrantPermission() {
-    if (Platform.OS === 'web') {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(track => track.stop());
-        setPermissionGranted(true);
-        return true;
-      } catch (e: any) {
-        setError('Microphone access denied. Please allow mic access in your browser settings.');
-        return false;
-      }
-    } else {
-      try {
-        const { status } = await Audio.requestPermissionsAsync();
-        if (status === 'granted') {
+      // Check if we're in an iframe
+      const iframe = isInIframe();
+      setInIframe(iframe);
+      if (!iframe) {
+        // Only request mic if not in iframe
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
           setPermissionGranted(true);
-          return true;
+        } catch {
+          setPermissionGranted(false);
         }
-        setError('Microphone permission denied. Please grant access in Settings.');
-        return false;
-      } catch {
-        return false;
+      }
+    } else {
+      // Native: use expo-audio
+      try {
+        const expoAudio = require('expo-audio');
+        AudioModule = expoAudio.default || expoAudio;
+        RecordingPresetsRef = expoAudio.RecordingPresets;
+        // Request permission
+        const perm = await AudioModule.requestRecordingPermissionsAsync();
+        setPermissionGranted(perm.granted);
+      } catch (e: any) {
+        console.error('Native audio init error:', e);
+        setPermissionGranted(false);
       }
     }
   }
@@ -126,44 +124,88 @@ export default function HomeScreen() {
     setError(null);
     setResult(null);
 
-    // Ensure permission
-    if (!permissionGranted) {
-      const granted = await requestAndGrantPermission();
-      if (!granted) return;
-    }
-
     if (Platform.OS === 'web') {
-      // Use browser MediaRecorder API directly
+      if (inIframe) {
+        setError('iframe_mic_blocked');
+        return;
+      }
+      // Web: use browser MediaRecorder
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        webAudioChunks = [];
-        webMediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-        webMediaRecorder.ondataavailable = (event: any) => {
-          if (event.data.size > 0) {
-            webAudioChunks.push(event.data);
-          }
+        setPermissionGranted(true);
+        webChunks = [];
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
+        webMediaRecorder = new MediaRecorder(stream, { mimeType });
+        webMediaRecorder.ondataavailable = (e: any) => {
+          if (e.data.size > 0) webChunks.push(e.data);
         };
-        webMediaRecorder.start();
+        webMediaRecorder.start(100); // collect chunks every 100ms
         setIsRecording(true);
       } catch (e: any) {
-        console.error('Web recording error:', e);
-        setError('Microphone access failed: ' + e.message + '. Check browser permissions.');
+        console.error('Web mic error:', e);
+        if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+          setError('Microphone access denied. Click the lock icon in your browser address bar to allow mic.');
+        } else if (e.name === 'NotFoundError') {
+          setError('No microphone found. Please connect a microphone.');
+        } else {
+          setError('Microphone error: ' + e.message);
+        }
       }
     } else {
-      // Native: use expo-av
+      // Native: use expo-audio
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
+        if (!AudioModule) {
+          const expoAudio = require('expo-audio');
+          AudioModule = expoAudio.default || expoAudio;
+          RecordingPresetsRef = expoAudio.RecordingPresets;
+        }
+        // Ensure permission
+        if (!permissionGranted) {
+          const perm = await AudioModule.requestRecordingPermissionsAsync();
+          if (!perm.granted) {
+            setError('Microphone permission denied. Please allow in Settings.');
+            return;
+          }
+          setPermissionGranted(true);
+        }
+        // Set audio mode for recording
+        await AudioModule.setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
         });
-        const { recording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        // Create and start recorder
+        const recorder = new AudioModule.AudioRecorder(
+          RecordingPresetsRef?.HIGH_QUALITY || {
+            extension: '.m4a',
+            sampleRate: 44100,
+            numberOfChannels: 1,
+            bitRate: 128000,
+          }
         );
-        recordingRef.current = recording;
+        recorder.prepareToRecordAsync();
+        await recorder.recordAsync();
+        setNativeRecorder(recorder);
         setIsRecording(true);
       } catch (e: any) {
         console.error('Native recording error:', e);
-        setError('Recording failed: ' + e.message);
+        // Fallback: try expo-av as backup
+        try {
+          const { Audio } = require('expo-av');
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+          });
+          const { recording } = await Audio.Recording.createAsync(
+            Audio.RecordingOptionsPresets.HIGH_QUALITY
+          );
+          setNativeRecorder({ type: 'expo-av', recording });
+          setIsRecording(true);
+        } catch (e2: any) {
+          console.error('Fallback recording error:', e2);
+          setError('Recording failed: ' + e2.message);
+        }
       }
     }
   }
@@ -173,33 +215,41 @@ export default function HomeScreen() {
     setIsProcessing(true);
 
     if (Platform.OS === 'web') {
-      // Web: stop MediaRecorder and send blob
       try {
         if (!webMediaRecorder) throw new Error('No active recording');
         await new Promise<void>((resolve) => {
           webMediaRecorder.onstop = () => resolve();
           webMediaRecorder.stop();
         });
-        // Stop all tracks
-        webMediaRecorder.stream.getTracks().forEach((track: any) => track.stop());
-        const blob = new Blob(webAudioChunks, { type: 'audio/webm' });
-        webAudioChunks = [];
+        webMediaRecorder.stream.getTracks().forEach((t: any) => t.stop());
+        const blob = new Blob(webChunks, { type: 'audio/webm' });
+        webChunks = [];
         webMediaRecorder = null;
-        if (blob.size === 0) throw new Error('Empty recording');
+        if (blob.size < 100) throw new Error('Recording too short');
         await sendAudioBlob(blob);
       } catch (e: any) {
-        setError('Failed to process recording: ' + e.message);
+        setError('Recording failed: ' + e.message);
         setIsProcessing(false);
       }
     } else {
-      // Native: use expo-av
       try {
-        if (!recordingRef.current) throw new Error('No active recording');
-        await recordingRef.current.stopAndUnloadAsync();
-        const uri = recordingRef.current.getURI();
-        recordingRef.current = null;
-        if (!uri) throw new Error('No recording URI');
-        await sendAudioNative(uri);
+        if (!nativeRecorder) throw new Error('No active recording');
+        if (nativeRecorder.type === 'expo-av') {
+          // expo-av fallback path
+          const rec = nativeRecorder.recording;
+          await rec.stopAndUnloadAsync();
+          const uri = rec.getURI();
+          setNativeRecorder(null);
+          if (!uri) throw new Error('No recording URI');
+          await sendAudioNative(uri);
+        } else {
+          // expo-audio path
+          await nativeRecorder.stop();
+          const uri = nativeRecorder.uri || nativeRecorder.getURI?.();
+          setNativeRecorder(null);
+          if (!uri) throw new Error('No recording URI');
+          await sendAudioNative(uri);
+        }
       } catch (e: any) {
         setError('Failed to process: ' + e.message);
         setIsProcessing(false);
@@ -216,11 +266,8 @@ export default function HomeScreen() {
         body: formData,
       });
       const data: ProcessResult = await res.json();
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setResult(data);
-      }
+      if (data.error) setError(data.error);
+      else setResult(data);
     } catch (e: any) {
       setError('Network error: ' + e.message);
     } finally {
@@ -241,11 +288,8 @@ export default function HomeScreen() {
         body: formData,
       });
       const data: ProcessResult = await res.json();
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setResult(data);
-      }
+      if (data.error) setError(data.error);
+      else setResult(data);
     } catch (e: any) {
       setError('Network error: ' + e.message);
     } finally {
@@ -266,12 +310,8 @@ export default function HomeScreen() {
         body: JSON.stringify({ text: textInput }),
       });
       const data: ProcessResult = await res.json();
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setResult(data);
-        setTextInput('');
-      }
+      if (data.error) setError(data.error);
+      else { setResult(data); setTextInput(''); }
     } catch (e: any) {
       setError('Network error: ' + e.message);
     } finally {
@@ -281,17 +321,21 @@ export default function HomeScreen() {
 
   function handleMicPress() {
     if (isProcessing) return;
-    if (isRecording) {
-      stopRecording();
+    if (isRecording) stopRecording();
+    else startRecording();
+  }
+
+  function openInNewTab() {
+    if (Platform.OS === 'web') {
+      window.open(window.location.href, '_blank');
     } else {
-      startRecording();
+      Linking.openURL(API_URL || '');
     }
   }
 
   function getUrgencyColor(urgency: string) {
     switch (urgency) {
-      case 'expired': return '#EF4444';
-      case 'critical': return '#EF4444';
+      case 'expired': case 'critical': return '#EF4444';
       case 'urgent': return '#F59E0B';
       case 'upcoming': return '#3B82F6';
       default: return '#10B981';
@@ -335,7 +379,26 @@ export default function HomeScreen() {
             </Animated.View>
           )}
 
-          {error && (
+          {/* Iframe mic blocked - special message */}
+          {error === 'iframe_mic_blocked' && (
+            <View style={styles.iframeBox}>
+              <Ionicons name="information-circle" size={24} color="#3B82F6" />
+              <Text style={styles.iframeTitle}>Mic blocked in preview</Text>
+              <Text style={styles.iframeText}>
+                Browser security blocks microphone in embedded previews. Open this app in a new browser tab to use voice:
+              </Text>
+              <TouchableOpacity testID="open-new-tab-btn" style={styles.openTabBtn} onPress={openInNewTab}>
+                <Ionicons name="open-outline" size={16} color="#0A0A0A" />
+                <Text style={styles.openTabText}>Open in New Tab</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="use-text-instead-btn" onPress={() => { setError(null); setShowTextInput(true); }} style={styles.switchBtn}>
+                <Text style={styles.switchText}>or type instead</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Regular errors */}
+          {error && error !== 'iframe_mic_blocked' && (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity testID="dismiss-error-btn" onPress={() => setError(null)} style={styles.dismissBtn}>
@@ -347,13 +410,13 @@ export default function HomeScreen() {
           {isRecording && (
             <View style={styles.listeningBadge}>
               <View style={styles.redDot} />
-              <Text style={styles.listeningText}>Listening... tap to stop</Text>
+              <Text style={styles.listeningText}>Listening... tap mic to stop</Text>
             </View>
           )}
           {isProcessing && (
             <View style={styles.listeningBadge}>
               <ActivityIndicator size="small" color="#F5F5DC" />
-              <Text style={styles.listeningText}>Processing...</Text>
+              <Text style={styles.listeningText}>Processing your groceries...</Text>
             </View>
           )}
 
@@ -397,13 +460,11 @@ export default function HomeScreen() {
               <TextInput
                 testID="text-input"
                 style={styles.textInput}
-                placeholder="e.g. 2 tomatoes and milk in fridge"
+                placeholder='e.g. "2 tomatoes and milk in fridge"'
                 placeholderTextColor="#52525B"
                 value={textInput}
                 onChangeText={setTextInput}
                 multiline
-                returnKeyType="send"
-                onSubmitEditing={sendText}
               />
               <View style={styles.textActions}>
                 <TouchableOpacity
@@ -472,6 +533,21 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: '#27272A' },
+  // Iframe specific
+  iframeBox: {
+    marginHorizontal: 24, marginBottom: 16, padding: 20, width: '85%',
+    backgroundColor: '#18181B', borderRadius: 16, borderWidth: 1, borderColor: '#27272A',
+    alignItems: 'center', gap: 8,
+  },
+  iframeTitle: { color: '#F5F5DC', fontSize: 16, fontWeight: '600' },
+  iframeText: { color: '#A1A1AA', fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  openTabBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#F5F5DC',
+    borderRadius: 12, marginTop: 8,
+  },
+  openTabText: { color: '#0A0A0A', fontSize: 14, fontWeight: '600' },
+  // Error
   errorBox: {
     marginHorizontal: 24, marginBottom: 16, padding: 16, width: '85%',
     backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12,
