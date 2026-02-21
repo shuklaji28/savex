@@ -429,7 +429,6 @@ async def process_extracted_items(items_list: list):
             batch_number = len(existing_batches) + 1
 
             if batch_number > 1:
-                # Duplicate detected
                 oldest_added = existing_batches[0].get("added_date", "")
                 warnings.append({
                     "name": name,
@@ -445,8 +444,15 @@ async def process_extracted_items(items_list: list):
             unit = item_data.get("unit", "count")
             category = item_data.get("category", get_category(name))
             weight = estimate_weight_grams(name, qty, unit)
-            cost = estimate_cost_inr(weight, category)
+            price_mentioned = item_data.get("price_mentioned")
+            cost = await estimate_cost_inr_smart(name, weight, category, price_mentioned)
+            storage = item_data.get("storage_location", "unknown") or "unknown"
+            voice_note = item_data.get("voice_note", "")
             display_name = f"{item_data.get('item_name', name)} #{batch_number}" if batch_number > 1 else item_data.get("item_name", name)
+
+            # If user mentioned a price, save to price memory for future use
+            if price_mentioned and price_mentioned > 0:
+                asyncio.create_task(save_user_price(name, price_mentioned))
 
             food_doc = {
                 "id": str(uuid.uuid4()),
@@ -456,7 +462,7 @@ async def process_extracted_items(items_list: list):
                 "quantity": qty,
                 "unit": unit,
                 "approximate_quantity": item_data.get("approximate_quantity", False),
-                "storage_location": item_data.get("storage_location", "unknown"),
+                "storage_location": storage,
                 "category": category,
                 "added_date": item_data.get("added_date", today_iso),
                 "expiry_date": expiry,
@@ -464,6 +470,7 @@ async def process_extracted_items(items_list: list):
                 "action_date": None,
                 "estimated_weight_grams": weight,
                 "estimated_cost_inr": cost,
+                "voice_note": voice_note,
                 "created_at": now_iso,
                 "updated_at": now_iso,
             }
