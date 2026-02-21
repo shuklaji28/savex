@@ -386,6 +386,24 @@ async def build_inventory_context() -> str:
     return "Current inventory (already exists — use this to classify intent correctly):\n" + "\n".join(lines)
 
 
+async def find_active_item_by_name(name: str) -> dict | None:
+    """Find active inventory item by normalized name — exact match then partial."""
+    item = await db.food_items.find_one({"normalized_name": name, "status": "active"}, {"_id": 0})
+    if item:
+        return item
+    item = await db.food_items.find_one(
+        {"normalized_name": {"$regex": name, "$options": "i"}, "status": "active"}, {"_id": 0}
+    )
+    if item:
+        return item
+    all_active = await db.food_items.find({"status": "active"}, {"_id": 0, "id": 1, "normalized_name": 1}).to_list(500)
+    for doc in all_active:
+        stored = doc.get("normalized_name", "")
+        if stored and stored in name:
+            return await db.food_items.find_one({"id": doc["id"]}, {"_id": 0})
+    return None
+
+
 
     """Find active inventory item by normalized name — exact match then partial."""
     # Exact match
