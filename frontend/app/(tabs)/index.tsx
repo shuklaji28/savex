@@ -297,6 +297,18 @@ export default function HomeScreen() {
             <Animated.View style={[s.resultBox, { opacity: fadeAnim }]}>
               {result!.transcript ? <Text style={s.transcript}>"{result!.transcript}"</Text> : null}
 
+              {warningItems.length > 0 && (
+                <View style={s.warningBox}>
+                  <Text style={s.warningTitle}>⚠️ Already in inventory</Text>
+                  {warningItems.map((w, i) => (
+                    <Text key={i} style={s.warningText}>
+                      · {w.name} — added as batch #{w.new_batch} (you had {w.existing_batches} batch{w.existing_batches !== 1 ? 'es' : ''} already)
+                    </Text>
+                  ))}
+                  <Text style={s.warningSubtext}>WhatsApp nudge sent to check before buying more</Text>
+                </View>
+              )}
+
               {addedItems.length > 0 && (
                 <>
                   <Text style={s.resultTitle}>+ Added {addedItems.length} item{addedItems.length !== 1 ? 's' : ''}</Text>
