@@ -497,6 +497,7 @@ const s = StyleSheet.create({
     backgroundColor: '#18181B', borderRadius: 16, borderWidth: 1, borderColor: '#27272A',
   },
   resultTitle: { color: '#10B981', fontSize: 16, fontWeight: '600', marginBottom: 4 },
+  updatedTitle: { color: '#A1A1AA' },
   transcript: { color: '#52525B', fontSize: 13, fontStyle: 'italic', marginBottom: 12 },
   resultItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, gap: 8 },
   urgencyDot: { width: 6, height: 6, borderRadius: 3 },
