@@ -885,39 +885,192 @@ def _send_whatsapp(body: str) -> bool:
 
 
 async def _job_expiry_alert():
-    """Evening job (8 PM IST): alert for items expiring within 3 days, personalized with inventory context."""
+    """Evening job (8 PM IST): alert for items expiring within 3 days with reply-to-update support."""
     try:
         items = await db.food_items.find({"status": "active"}, {"_id": 0}).to_list(1000)
-        urgent_lines = []
-        cook_suggestions = []
+        urgent_items = []
         for item in items:
             days, urgency = compute_urgency(item.get("expiry_date", ""))
             if urgency in ("critical", "urgent") and days > 0:
-                label = "expires *today*" if days == 1 else f"expires in *{days} days*"
-                loc = item.get("storage_location", "unknown")
-                loc_hint = f" (📍 {loc})" if loc and loc != "unknown" else ""
-                urgent_lines.append(f"• {item['normalized_name'].capitalize()}{loc_hint} — {label}")
-                cook_suggestions.append(item['normalized_name'])
+                urgent_items.append({
+                    "item_id": item["id"],
+                    "name": item["normalized_name"],
+                    "display": item.get("item_name", item["normalized_name"]),
+                    "days": days,
+                    "location": item.get("storage_location", "unknown"),
+                })
 
-        if not urgent_lines:
+        if not urgent_items:
             logger.info("Expiry alert: no urgent items, skipping WhatsApp")
             return
 
+        # Save alert session so webhook can look up "1", "2", etc.
+        session_doc = {
+            "session_id": str(uuid.uuid4()),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+            "from_number": WA_TO,
+            "items": [{"index": i + 1, **it} for i, it in enumerate(urgent_items)],
+        }
+        await db.alert_sessions.insert_one(session_doc)
+        logger.info(f"Alert session saved: {session_doc['session_id']}")
+
+        # Build message
+        lines = []
+        cook_names = []
+        for it in session_doc["items"]:
+            label = "expires *today*" if it["days"] == 1 else f"expires in *{it['days']} days*"
+            loc_hint = f" (📍 {it['location']})" if it["location"] and it["location"] != "unknown" else ""
+            lines.append(f"{it['index']}️⃣ {it['display'].capitalize()}{loc_hint} — {label}")
+            cook_names.append(it["name"])
+
         cook_hint = ""
-        if cook_suggestions:
-            items_str = ", ".join(cook_suggestions[:3])
-            cook_hint = f"\n\n💡 *Tonight's tip:* Use up {items_str} in your dinner — open savex > Cook tab for a quick recipe!"
+        if cook_names:
+            cook_hint = f"\n\n💡 *Tip:* Cook with {', '.join(cook_names[:3])} tonight — open savex > Cook tab!"
+
+        reply_hint = (
+            "\n\n↩️ *Reply to update:*\n"
+            "Just tell me what happened — e.g:\n"
+            "• _\"used the paneer\"_\n"
+            "• _\"threw away 1\"_\n"
+            "• _\"all used\"_\n"
+            "savex will update your inventory automatically 🙂"
+        )
 
         body = (
             "🚨 *savex — Expiry Alert*\n\n"
-            "These items need your attention soon:\n"
-            + "\n".join(urgent_lines)
+            "These items need your attention:\n"
+            + "\n".join(lines)
             + cook_hint
-            + "\n\nDon't let them go to waste! 🌱"
+            + reply_hint
         )
         _send_whatsapp(body)
     except Exception as e:
         logger.error(f"Expiry alert job error: {e}")
+
+
+async def _interpret_whatsapp_reply(user_message: str, session_items: list) -> list:
+    """Use Gemini to interpret a free-text WhatsApp reply against alert session items."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage as LLMUserMessage
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+
+    items_context = "\n".join(
+        [f"{it['index']}. {it['display']} (id: {it['item_id']})" for it in session_items]
+    )
+
+    system_prompt = """You parse WhatsApp replies to food expiry alerts and extract update actions.
+
+The user was shown a numbered list of expiring food items and replied with what happened to them.
+
+Return ONLY valid JSON — no markdown, no explanation:
+{
+  "actions": [
+    {"item_id": "<exact id from context>", "item_name": "<name>", "action": "used|wasted"}
+  ],
+  "mark_all": "used|wasted|null"
+}
+
+Rules:
+- "used", "ate", "consumed", "finished", "cooked", "done" → action: "used"
+- "wasted", "threw", "expired", "bad", "rotten", "couldn't use", "discarded", "gone" → action: "wasted"
+- "all used" / "everything used" → mark_all: "used", actions: []
+- "all wasted" / "all gone bad" → mark_all: "wasted", actions: []
+- Numbers like "1 used" or "2 wasted" → match by index from items list
+- Item names like "paneer used" or "used the chicken" → match by name
+- If unclear for an item, skip it
+- Return empty actions if nothing is clear"""
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=str(uuid.uuid4()),
+        system_message=system_prompt
+    ).with_model("gemini", "gemini-3-flash-preview")
+
+    response = await chat.send_message(LLMUserMessage(
+        text=f"Items in this alert:\n{items_context}\n\nUser replied: \"{user_message}\""
+    ))
+    parsed = parse_json_from_llm(response)
+    return parsed
+
+
+@api_router.post("/whatsapp/webhook")
+async def whatsapp_webhook(request: Request):
+    """Receive incoming WhatsApp replies from Twilio and update inventory."""
+    from twilio.rest import Client as TwilioClient
+    try:
+        form = await request.form()
+        user_message = (form.get("Body") or "").strip()
+        from_number = form.get("From", "")
+        logger.info(f"WhatsApp reply from {from_number}: {user_message}")
+
+        if not user_message:
+            return {"status": "ignored"}
+
+        # Find the most recent active alert session
+        now_iso = datetime.now(timezone.utc).isoformat()
+        session = await db.alert_sessions.find_one(
+            {"from_number": WA_TO, "expires_at": {"$gt": now_iso}},
+            sort=[("created_at", -1)]
+        )
+
+        if not session:
+            # No active session — send a helpful nudge
+            _send_whatsapp(
+                "👋 *savex* here! No active alert session found.\n\n"
+                "Open the savex app to log items, or wait for tonight's 8 PM expiry alert to reply here."
+            )
+            return {"status": "no_session"}
+
+        session_items = session.get("items", [])
+
+        # Use Gemini to interpret the reply
+        parsed = await _interpret_whatsapp_reply(user_message, session_items)
+        actions = parsed.get("actions", [])
+        mark_all = parsed.get("mark_all")
+        today_iso = date.today().isoformat()
+        updated = []
+
+        if mark_all in ("used", "wasted"):
+            for it in session_items:
+                await db.food_items.update_one(
+                    {"id": it["item_id"]},
+                    {"$set": {"status": mark_all, "action_date": today_iso, "updated_at": now_iso}}
+                )
+                updated.append(f"✅ {it['display'].capitalize()} → {mark_all}")
+        else:
+            for action in actions:
+                item_id = action.get("item_id")
+                act = action.get("action")
+                name = action.get("item_name", item_id)
+                if item_id and act in ("used", "wasted"):
+                    await db.food_items.update_one(
+                        {"id": item_id},
+                        {"$set": {"status": act, "action_date": today_iso, "updated_at": now_iso}}
+                    )
+                    updated.append(f"{'✅' if act == 'used' else '🗑️'} {name.capitalize()} → {act}")
+
+        if updated:
+            # Expire this session so they can't re-apply
+            await db.alert_sessions.update_one(
+                {"session_id": session["session_id"]},
+                {"$set": {"expires_at": now_iso}}
+            )
+            reply = "📦 *savex updated!*\n\n" + "\n".join(updated) + "\n\nGreat job reducing waste! 🌱"
+        else:
+            reply = (
+                "🤔 *savex* couldn't quite parse that.\n\n"
+                "Try something like:\n"
+                "• _\"used the paneer\"_\n"
+                "• _\"1 wasted\"_\n"
+                "• _\"all used\"_"
+            )
+
+        _send_whatsapp(reply)
+        return {"status": "ok", "updated": updated}
+
+    except Exception as e:
+        logger.error(f"WhatsApp webhook error: {e}", exc_info=True)
+        return {"status": "error", "detail": str(e)}
 
 
 async def _job_daily_recipe():
