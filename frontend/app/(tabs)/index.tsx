@@ -292,15 +292,50 @@ export default function HomeScreen() {
         <View style={s.center}>
           {hasResult && (
             <Animated.View style={[s.resultBox, { opacity: fadeAnim }]}>
-              <Text style={s.resultTitle}>Added {result!.count} item{result!.count !== 1 ? 's' : ''}</Text>
               {result!.transcript ? <Text style={s.transcript}>"{result!.transcript}"</Text> : null}
-              {result!.items.map((item, i) => (
-                <View key={item.id || String(i)} style={s.resultItem}>
-                  <View style={[s.urgencyDot, { backgroundColor: urgencyColor(item.urgency_level) }]} />
-                  <Text style={s.resultItemName}>{item.normalized_name}</Text>
-                  <Text style={s.resultItemMeta}>{item.quantity} {item.unit} · {item.days_remaining}d left</Text>
-                </View>
-              ))}
+
+              {addedItems.length > 0 && (
+                <>
+                  <Text style={s.resultTitle}>+ Added {addedItems.length} item{addedItems.length !== 1 ? 's' : ''}</Text>
+                  {addedItems.map((item, i) => (
+                    <View key={item.id || String(i)} style={s.resultItem}>
+                      <View style={[s.urgencyDot, { backgroundColor: urgencyColor(item.urgency_level) }]} />
+                      <Text style={s.resultItemName}>{item.normalized_name}</Text>
+                      <Text style={s.resultItemMeta}>{item.quantity} {item.unit} · {item.days_remaining}d left</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {updatedItems.length > 0 && (
+                <>
+                  <Text style={[s.resultTitle, s.updatedTitle]}>
+                    {addedItems.length > 0 ? '\n' : ''}✓ Updated {updatedItems.length} item{updatedItems.length !== 1 ? 's' : ''}
+                  </Text>
+                  {updatedItems.map((item, i) => (
+                    <View key={item.id || String(i)} style={s.resultItem}>
+                      <View style={[s.urgencyDot, { backgroundColor: item.status === 'used' ? '#10B981' : '#EF4444' }]} />
+                      <Text style={s.resultItemName}>{item.normalized_name}</Text>
+                      <Text style={[s.resultItemMeta, { color: item.status === 'used' ? '#10B981' : '#EF4444' }]}>
+                        marked {item.status}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {notFoundItems.length > 0 && (
+                <>
+                  <Text style={[s.resultTitle, { color: '#F59E0B', marginTop: 8, fontSize: 13 }]}>
+                    Not found in inventory:
+                  </Text>
+                  {notFoundItems.map((nf, i) => (
+                    <Text key={i} style={[s.resultItemMeta, { color: '#F59E0B', paddingLeft: 14 }]}>
+                      · {nf.name}
+                    </Text>
+                  ))}
+                </>
+              )}
             </Animated.View>
           )}
 
