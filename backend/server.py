@@ -363,7 +363,30 @@ def parse_json_from_llm(text: str) -> dict:
         return {"items": []}
 
 
-async def find_active_item_by_name(name: str) -> dict | None:
+async def build_inventory_context() -> str:
+    """Fetch active inventory and format as context for Gemini so it can distinguish add vs update."""
+    active = await db.food_items.find(
+        {"status": "active"},
+        {"_id": 0, "normalized_name": 1, "item_name": 1, "storage_location": 1,
+         "expiry_date": 1, "quantity": 1, "unit": 1, "batch_number": 1}
+    ).to_list(200)
+
+    if not active:
+        return "Current inventory: (empty)"
+
+    lines = []
+    for item in active:
+        loc = item.get("storage_location", "unknown")
+        batch = item.get("batch_number", 1)
+        batch_tag = f" [batch #{batch}]" if batch > 1 else ""
+        expiry = item.get("expiry_date", "?")
+        qty = f"{item.get('quantity',1)} {item.get('unit','count')}"
+        lines.append(f"- {item['normalized_name']}{batch_tag} | {qty} | location: {loc} | expiry: {expiry}")
+
+    return "Current inventory (already exists — use this to classify intent correctly):\n" + "\n".join(lines)
+
+
+
     """Find active inventory item by normalized name — exact match then partial."""
     # Exact match
     item = await db.food_items.find_one({"normalized_name": name, "status": "active"}, {"_id": 0})
