@@ -288,13 +288,26 @@ async def find_active_item_by_name(name: str) -> dict | None:
     return None
 
 
+async def _send_duplicate_whatsapp_nudge(duplicates: list[str]):
+    """Fire-and-forget WhatsApp nudge when user adds items already in inventory."""
+    names = ", ".join(d.capitalize() for d in duplicates)
+    body = (
+        f"🛒 *savex — heads up!*\n\n"
+        f"You already have *{names}* in your inventory.\n\n"
+        f"Double-check before buying more — open savex to see what's already there! 🌱"
+    )
+    _send_whatsapp(body)
+
+
 async def process_extracted_items(items_list: list):
     """Route extracted items to add or update flows based on intent."""
     added_items = []
     updated_items = []
     not_found = []
+    warnings = []   # duplicate batch warnings
     now_iso = datetime.now(timezone.utc).isoformat()
     today_iso = date.today().isoformat()
+    duplicate_names = []
 
     for item_data in items_list:
         intent = item_data.get("intent", "add")
@@ -314,7 +327,23 @@ async def process_extracted_items(items_list: list):
             else:
                 not_found.append({"name": name, "intent": intent})
         else:
-            # ADD flow (existing logic)
+            # ADD flow — check for duplicates first
+            existing_batches = await db.food_items.find(
+                {"normalized_name": name, "status": "active"}, {"_id": 0, "id": 1, "added_date": 1, "batch_number": 1}
+            ).to_list(100)
+            batch_number = len(existing_batches) + 1
+
+            if batch_number > 1:
+                # Duplicate detected
+                oldest_added = existing_batches[0].get("added_date", "")
+                warnings.append({
+                    "name": name,
+                    "existing_batches": len(existing_batches),
+                    "oldest_added": oldest_added,
+                    "new_batch": batch_number,
+                })
+                duplicate_names.append(name)
+
             expiry = compute_expiry(item_data)
             days_remaining, urgency = compute_urgency(expiry)
             qty = item_data.get("quantity", 1)
@@ -322,11 +351,13 @@ async def process_extracted_items(items_list: list):
             category = item_data.get("category", get_category(name))
             weight = estimate_weight_grams(name, qty, unit)
             cost = estimate_cost_inr(weight, category)
+            display_name = f"{item_data.get('item_name', name)} #{batch_number}" if batch_number > 1 else item_data.get("item_name", name)
 
             food_doc = {
                 "id": str(uuid.uuid4()),
-                "item_name": item_data.get("item_name", name),
+                "item_name": display_name,
                 "normalized_name": name,
+                "batch_number": batch_number,
                 "quantity": qty,
                 "unit": unit,
                 "approximate_quantity": item_data.get("approximate_quantity", False),
@@ -347,7 +378,11 @@ async def process_extracted_items(items_list: list):
             food_doc.pop("_id", None)
             added_items.append(food_doc)
 
-    return added_items, updated_items, not_found
+    # Fire WhatsApp nudge if any duplicates were added (non-blocking)
+    if duplicate_names:
+        asyncio.create_task(_send_duplicate_whatsapp_nudge(duplicate_names))
+
+    return added_items, updated_items, not_found, warnings
 
 
 # ─── API ENDPOINTS ───
