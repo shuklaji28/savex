@@ -751,25 +751,33 @@ def _send_whatsapp(body: str) -> bool:
 
 
 async def _job_expiry_alert():
-    """Evening job (8 PM IST): alert for items expiring within 3 days."""
+    """Evening job (8 PM IST): alert for items expiring within 3 days, personalized with inventory context."""
     try:
         items = await db.food_items.find({"status": "active"}, {"_id": 0}).to_list(1000)
         urgent_lines = []
+        cook_suggestions = []
         for item in items:
             days, urgency = compute_urgency(item.get("expiry_date", ""))
             if urgency in ("critical", "urgent") and days > 0:
                 label = "expires *today*" if days == 1 else f"expires in *{days} days*"
                 urgent_lines.append(f"• {item['normalized_name'].capitalize()} — {label}")
+                cook_suggestions.append(item['normalized_name'])
 
         if not urgent_lines:
             logger.info("Expiry alert: no urgent items, skipping WhatsApp")
             return
 
+        cook_hint = ""
+        if cook_suggestions:
+            items_str = ", ".join(cook_suggestions[:3])
+            cook_hint = f"\n\n💡 *Tonight's tip:* Use up {items_str} in your dinner — open savex > Cook tab for a quick recipe!"
+
         body = (
             "🚨 *savex — Expiry Alert*\n\n"
             "These items need your attention soon:\n"
             + "\n".join(urgent_lines)
-            + "\n\nOpen savex and use them up before they go to waste! 🌱"
+            + cook_hint
+            + "\n\nDon't let them go to waste! 🌱"
         )
         _send_whatsapp(body)
     except Exception as e:
