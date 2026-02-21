@@ -237,7 +237,8 @@ export default function HomeScreen() {
     }
   }
 
-  async function sendText() {
+  // DEV ONLY: sendText function for text input mode — commented out
+  /* async function sendText() {
     if (!textInput.trim()) return;
     Keyboard.dismiss();
     setError(null);
@@ -256,7 +257,7 @@ export default function HomeScreen() {
     } finally {
       setIsProcessing(false);
     }
-  }
+  } */
 
   function handleMicPress() {
     if (isProcessing) return;
