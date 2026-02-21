@@ -22,9 +22,17 @@ type FoodItem = {
   urgency_level: string;
 };
 
+type UpdatedItem = {
+  id: string;
+  normalized_name: string;
+  status: string;
+};
+
 type ProcessResult = {
   transcript: string;
   items: FoodItem[];
+  updated_items?: UpdatedItem[];
+  not_found?: { name: string; intent: string }[];
   count: number;
   error?: string;
 };
