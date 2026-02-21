@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, SafeAreaView,
-  Animated, Platform, ActivityIndicator,
+  Animated, Platform, ActivityIndicator, TextInput,
+  KeyboardAvoidingView, Keyboard,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +34,8 @@ export default function HomeScreen() {
   const [result, setResult] = useState<ProcessResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textInput, setTextInput] = useState('');
   const recordingRef = useRef<Audio.Recording | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -58,10 +61,11 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (result) {
+      fadeAnim.setValue(0);
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
       const timer = setTimeout(() => {
         Animated.timing(fadeAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => setResult(null));
-      }, 6000);
+      }, 8000);
       return () => clearTimeout(timer);
     }
   }, [result]);
@@ -89,7 +93,8 @@ export default function HomeScreen() {
       recordingRef.current = recording;
       setIsRecording(true);
     } catch (e: any) {
-      setError('Failed to start recording: ' + e.message);
+      setError('Mic not available. Use text input instead.');
+      setShowTextInput(true);
     }
   }
 
@@ -140,6 +145,32 @@ export default function HomeScreen() {
     }
   }
 
+  async function sendText() {
+    if (!textInput.trim()) return;
+    Keyboard.dismiss();
+    setError(null);
+    setResult(null);
+    setIsProcessing(true);
+    try {
+      const res = await fetch(`${API_URL}/api/process-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: textInput }),
+      });
+      const data: ProcessResult = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setResult(data);
+        setTextInput('');
+      }
+    } catch (e: any) {
+      setError('Network error: ' + e.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   function handleMicPress() {
     if (isProcessing) return;
     if (isRecording) {
@@ -161,232 +192,188 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>sustain</Text>
-        <Text style={styles.subtitle}>speak to log groceries</Text>
-      </View>
-
-      <View style={styles.center}>
-        {isRecording && (
-          <View style={styles.listeningBadge}>
-            <View style={styles.redDot} />
-            <Text style={styles.listeningText}>Listening...</Text>
-          </View>
-        )}
-        {isProcessing && (
-          <View style={styles.listeningBadge}>
-            <ActivityIndicator size="small" color="#F5F5DC" />
-            <Text style={styles.listeningText}>Processing...</Text>
-          </View>
-        )}
-
-        <Animated.View style={[styles.micOuter, { transform: [{ scale: pulseAnim }] }]}>
-          <TouchableOpacity
-            testID="mic-button"
-            style={[
-              styles.micButton,
-              isRecording && styles.micRecording,
-              isProcessing && styles.micProcessing,
-            ]}
-            onPress={handleMicPress}
-            activeOpacity={0.7}
-            disabled={!permissionGranted || isProcessing}
-          >
-            <Ionicons
-              name={isRecording ? 'stop' : 'mic'}
-              size={40}
-              color={isRecording ? '#EF4444' : '#0A0A0A'}
-            />
-          </TouchableOpacity>
-        </Animated.View>
-
-        {!permissionGranted && (
-          <TouchableOpacity testID="grant-permission-btn" onPress={checkPermission} style={styles.permBtn}>
-            <Text style={styles.permText}>Tap to grant microphone access</Text>
-          </TouchableOpacity>
-        )}
-
-        {!isRecording && !isProcessing && !result && !error && permissionGranted && (
-          <Text style={styles.hint}>Tap to start recording</Text>
-        )}
-      </View>
-
-      {error && (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
-      {result && result.items && result.items.length > 0 && (
-        <Animated.View style={[styles.resultBox, { opacity: fadeAnim }]}>
-          <Text style={styles.resultTitle}>
-            Added {result.count} item{result.count !== 1 ? 's' : ''}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>sustain</Text>
+          <Text style={styles.subtitle}>
+            {showTextInput ? 'type what you bought' : 'speak to log groceries'}
           </Text>
-          {result.transcript ? (
-            <Text style={styles.transcript}>"{result.transcript}"</Text>
-          ) : null}
-          {result.items.map((item, i) => (
-            <View key={item.id || i} style={styles.resultItem}>
-              <View style={[styles.urgencyDot, { backgroundColor: getUrgencyColor(item.urgency_level) }]} />
-              <Text style={styles.resultItemName}>
-                {item.normalized_name}
-              </Text>
-              <Text style={styles.resultItemMeta}>
-                {item.quantity} {item.unit} · {item.days_remaining}d left
-              </Text>
+        </View>
+
+        <View style={styles.center}>
+          {isRecording && (
+            <View style={styles.listeningBadge}>
+              <View style={styles.redDot} />
+              <Text style={styles.listeningText}>Listening...</Text>
             </View>
-          ))}
-        </Animated.View>
-      )}
+          )}
+          {isProcessing && (
+            <View style={styles.listeningBadge}>
+              <ActivityIndicator size="small" color="#F5F5DC" />
+              <Text style={styles.listeningText}>Processing...</Text>
+            </View>
+          )}
+
+          {!showTextInput ? (
+            <>
+              <Animated.View style={[styles.micOuter, { transform: [{ scale: pulseAnim }] }]}>
+                <TouchableOpacity
+                  testID="mic-button"
+                  style={[
+                    styles.micButton,
+                    isRecording && styles.micRecording,
+                    isProcessing && styles.micProcessing,
+                  ]}
+                  onPress={handleMicPress}
+                  activeOpacity={0.7}
+                  disabled={isProcessing}
+                >
+                  <Ionicons
+                    name={isRecording ? 'stop' : 'mic'}
+                    size={40}
+                    color={isRecording ? '#EF4444' : '#0A0A0A'}
+                  />
+                </TouchableOpacity>
+              </Animated.View>
+
+              {!isRecording && !isProcessing && !result && !error && (
+                <Text style={styles.hint}>Tap to start recording</Text>
+              )}
+
+              <TouchableOpacity
+                testID="switch-to-text-btn"
+                onPress={() => setShowTextInput(true)}
+                style={styles.switchBtn}
+              >
+                <Ionicons name="create-outline" size={16} color="#52525B" />
+                <Text style={styles.switchText}>or type instead</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <View style={styles.textInputWrap}>
+              <TextInput
+                testID="text-input"
+                style={styles.textInput}
+                placeholder="e.g. 2 tomatoes and milk in fridge"
+                placeholderTextColor="#52525B"
+                value={textInput}
+                onChangeText={setTextInput}
+                multiline
+                returnKeyType="send"
+                onSubmitEditing={sendText}
+              />
+              <View style={styles.textActions}>
+                <TouchableOpacity
+                  testID="send-text-btn"
+                  style={[styles.sendBtn, !textInput.trim() && styles.sendBtnDisabled]}
+                  onPress={sendText}
+                  disabled={!textInput.trim() || isProcessing}
+                >
+                  <Ionicons name="arrow-up" size={20} color={textInput.trim() ? '#0A0A0A' : '#52525B'} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                testID="switch-to-voice-btn"
+                onPress={() => setShowTextInput(false)}
+                style={styles.switchBtn}
+              >
+                <Ionicons name="mic-outline" size={16} color="#52525B" />
+                <Text style={styles.switchText}>use voice instead</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
+        {result && result.items && result.items.length > 0 && (
+          <Animated.View style={[styles.resultBox, { opacity: fadeAnim }]}>
+            <Text style={styles.resultTitle}>
+              Added {result.count} item{result.count !== 1 ? 's' : ''}
+            </Text>
+            {result.transcript ? (
+              <Text style={styles.transcript}>"{result.transcript}"</Text>
+            ) : null}
+            {result.items.map((item, i) => (
+              <View key={item.id || i} style={styles.resultItem}>
+                <View style={[styles.urgencyDot, { backgroundColor: getUrgencyColor(item.urgency_level) }]} />
+                <Text style={styles.resultItemName}>
+                  {item.normalized_name}
+                </Text>
+                <Text style={styles.resultItemMeta}>
+                  {item.quantity} {item.unit} · {item.days_remaining}d left
+                </Text>
+              </View>
+            ))}
+          </Animated.View>
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0A0A0A',
-  },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#F5F5DC',
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#52525B',
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#0A0A0A' },
+  flex: { flex: 1 },
+  header: { paddingHorizontal: 24, paddingTop: 16 },
+  title: { fontSize: 32, fontWeight: '700', color: '#F5F5DC', letterSpacing: -0.5 },
+  subtitle: { fontSize: 14, color: '#52525B', marginTop: 4, fontWeight: '500' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   listeningBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#18181B',
-    borderRadius: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 24,
+    paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#18181B', borderRadius: 20,
   },
-  redDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#EF4444',
-  },
-  listeningText: {
-    color: '#A1A1AA',
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  redDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
+  listeningText: { color: '#A1A1AA', fontSize: 14, fontWeight: '500' },
   micOuter: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(245,245,220,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(245,245,220,0.06)', alignItems: 'center', justifyContent: 'center',
   },
   micButton: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: '#F5F5DC',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#F5F5DC',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    width: 88, height: 88, borderRadius: 44, backgroundColor: '#F5F5DC',
+    alignItems: 'center', justifyContent: 'center',
   },
-  micRecording: {
-    backgroundColor: '#27272A',
+  micRecording: { backgroundColor: '#27272A' },
+  micProcessing: { backgroundColor: '#27272A', opacity: 0.6 },
+  hint: { color: '#52525B', fontSize: 14, marginTop: 20, fontWeight: '500' },
+  switchBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 20,
+    paddingHorizontal: 16, paddingVertical: 10,
   },
-  micProcessing: {
-    backgroundColor: '#27272A',
-    opacity: 0.6,
+  switchText: { color: '#52525B', fontSize: 13, fontWeight: '500' },
+  textInputWrap: { width: '100%', paddingHorizontal: 24, alignItems: 'center' },
+  textInput: {
+    width: '100%', backgroundColor: '#18181B', borderRadius: 16, padding: 16,
+    color: '#F5F5DC', fontSize: 16, minHeight: 80, textAlignVertical: 'top',
+    borderWidth: 1, borderColor: '#27272A',
   },
-  hint: {
-    color: '#52525B',
-    fontSize: 14,
-    marginTop: 20,
-    fontWeight: '500',
+  textActions: { flexDirection: 'row', justifyContent: 'flex-end', width: '100%', marginTop: 10 },
+  sendBtn: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: '#F5F5DC',
+    alignItems: 'center', justifyContent: 'center',
   },
-  permBtn: {
-    marginTop: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: '#18181B',
-    borderRadius: 12,
-  },
-  permText: {
-    color: '#F5F5DC',
-    fontSize: 14,
-  },
+  sendBtnDisabled: { backgroundColor: '#27272A' },
   errorBox: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    padding: 16,
-    backgroundColor: 'rgba(239,68,68,0.1)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.2)',
+    marginHorizontal: 24, marginBottom: 24, padding: 16,
+    backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)',
   },
-  errorText: {
-    color: '#EF4444',
-    fontSize: 14,
-  },
+  errorText: { color: '#EF4444', fontSize: 14 },
   resultBox: {
-    marginHorizontal: 24,
-    marginBottom: 24,
-    padding: 16,
-    backgroundColor: '#18181B',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#27272A',
+    marginHorizontal: 24, marginBottom: 24, padding: 16,
+    backgroundColor: '#18181B', borderRadius: 16, borderWidth: 1, borderColor: '#27272A',
   },
-  resultTitle: {
-    color: '#10B981',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  transcript: {
-    color: '#52525B',
-    fontSize: 13,
-    fontStyle: 'italic',
-    marginBottom: 12,
-  },
-  resultItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    gap: 8,
-  },
-  urgencyDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  resultItemName: {
-    color: '#F5F5DC',
-    fontSize: 15,
-    fontWeight: '500',
-    flex: 1,
-  },
-  resultItemMeta: {
-    color: '#A1A1AA',
-    fontSize: 13,
-  },
+  resultTitle: { color: '#10B981', fontSize: 16, fontWeight: '600', marginBottom: 4 },
+  transcript: { color: '#52525B', fontSize: 13, fontStyle: 'italic', marginBottom: 12 },
+  resultItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, gap: 8 },
+  urgencyDot: { width: 6, height: 6, borderRadius: 3 },
+  resultItemName: { color: '#F5F5DC', fontSize: 15, fontWeight: '500', flex: 1 },
+  resultItemMeta: { color: '#A1A1AA', fontSize: 13 },
 });
