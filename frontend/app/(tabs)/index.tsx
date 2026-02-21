@@ -59,8 +59,8 @@ export default function HomeScreen() {
   const [result, setResult] = useState<ProcessResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
-  const [showTextInput, setShowTextInput] = useState(false);
-  const [textInput, setTextInput] = useState('');
+  // const [showTextInput, setShowTextInput] = useState(false); // dev-only text mode
+  // const [textInput, setTextInput] = useState('');
   const [inIframe, setInIframe] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
