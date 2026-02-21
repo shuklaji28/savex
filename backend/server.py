@@ -621,6 +621,7 @@ async def process_text(req: dict):
         return {"error": "No text provided", "items": [], "count": 0}
 
     try:
+        inventory_context = await build_inventory_context()
         session_id = str(uuid.uuid4())
         chat = LlmChat(
             api_key=api_key,
@@ -628,7 +629,7 @@ async def process_text(req: dict):
             system_message=EXTRACTION_SYSTEM_PROMPT
         ).with_model("gemini", "gemini-3-flash-preview")
 
-        prompt = f"Current date: {date.today().isoformat()}\n\nTranscript: \"{transcript}\""
+        prompt = f"Current date: {date.today().isoformat()}\n\n{inventory_context}\n\nTranscript: \"{transcript}\""
         response = await chat.send_message(UserMessage(text=prompt))
         logger.info(f"Gemini response: {response}")
         extracted = parse_json_from_llm(response)
