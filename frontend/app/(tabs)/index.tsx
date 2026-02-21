@@ -276,7 +276,10 @@ export default function HomeScreen() {
     return '#10B981';
   }
 
-  const hasResult = result && result.items && result.items.length > 0;
+  const hasResult = result && result.count > 0;
+  const addedItems = result?.items || [];
+  const updatedItems = result?.updated_items || [];
+  const notFoundItems = result?.not_found || [];
 
   return (
     <SafeAreaView style={s.container}>
