@@ -511,22 +511,29 @@ async def get_recipes():
 
     api_key = os.environ.get("EMERGENT_LLM_KEY")
     items = await db.food_items.find({"status": "active"}, {"_id": 0}).to_list(1000)
-    expiring = []
+
+    if not items:
+        return {"recipes": [], "expiring_items": []}
+
+    # Build a list of all active items sorted by days remaining
+    all_with_urgency = []
     for item in items:
         days_remaining, urgency = compute_urgency(item.get("expiry_date", ""))
-        if urgency in ("expired", "critical", "urgent", "upcoming"):
-            expiring.append({
-                "name": item["normalized_name"],
-                "quantity": item["quantity"],
-                "unit": item["unit"],
-                "days_remaining": days_remaining,
-                "urgency": urgency,
-            })
-    expiring.sort(key=lambda x: x["days_remaining"])
-    expiring = expiring[:10]
+        all_with_urgency.append({
+            "name": item["normalized_name"],
+            "quantity": item["quantity"],
+            "unit": item["unit"],
+            "days_remaining": days_remaining,
+            "urgency": urgency,
+        })
+    all_with_urgency.sort(key=lambda x: x["days_remaining"])
 
+    # Prefer truly expiring items; fall back to the 5 soonest-to-expire items
+    expiring = [i for i in all_with_urgency if i["urgency"] in ("expired", "critical", "urgent", "upcoming")]
     if not expiring:
-        return {"recipes": [], "expiring_items": []}
+        expiring = all_with_urgency[:5]  # use soonest items even if all fresh
+
+    expiring = expiring[:10]
 
     try:
         chat = LlmChat(
