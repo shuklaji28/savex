@@ -111,6 +111,51 @@ export default function ReportsScreen() {
               </View>
             </View>
 
+            {/* Equivalent Impact */}
+            {report.overall.co2_saved_kg > 0 || report.overall.saved_weight_kg > 0 ? (
+              <>
+                <Text style={styles.sectionTitle}>That's Equivalent To</Text>
+                <View style={styles.equivGrid}>
+                  {report.overall.co2_saved_kg > 0 && (
+                    <View style={styles.equivCard}>
+                      <Text style={styles.equivEmoji}>🌳</Text>
+                      <Text style={styles.equivValue}>
+                        {(report.overall.co2_saved_kg / (21 / 12)).toFixed(1)}
+                      </Text>
+                      <Text style={styles.equivLabel}>months of a tree absorbing CO₂</Text>
+                    </View>
+                  )}
+                  {report.overall.co2_saved_kg > 0 && (
+                    <View style={styles.equivCard}>
+                      <Text style={styles.equivEmoji}>🚗</Text>
+                      <Text style={styles.equivValue}>
+                        {Math.round(report.overall.co2_saved_kg / 0.12)} km
+                      </Text>
+                      <Text style={styles.equivLabel}>not driven by car</Text>
+                    </View>
+                  )}
+                  {report.overall.saved_weight_kg > 0 && (
+                    <View style={styles.equivCard}>
+                      <Text style={styles.equivEmoji}>🍽️</Text>
+                      <Text style={styles.equivValue}>
+                        {Math.round(report.overall.saved_weight_kg / 0.4)}
+                      </Text>
+                      <Text style={styles.equivLabel}>meals worth of food rescued</Text>
+                    </View>
+                  )}
+                  {report.overall.money_saved_inr > 0 && (
+                    <View style={styles.equivCard}>
+                      <Text style={styles.equivEmoji}>☕</Text>
+                      <Text style={styles.equivValue}>
+                        {Math.round(report.overall.money_saved_inr / 10)}
+                      </Text>
+                      <Text style={styles.equivLabel}>cups of chai saved</Text>
+                    </View>
+                  )}
+                </View>
+              </>
+            ) : null}
+
             {/* Overall Impact Cards */}
             <Text style={styles.sectionTitle}>Overall Impact</Text>
             <View style={styles.cardGrid}>
