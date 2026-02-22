@@ -128,8 +128,38 @@ WEIGHT_ESTIMATES = {
 }
 UNIT_TO_GRAMS = {"kg": 1000, "gram": 1, "g": 1, "liter": 1000, "litre": 1000, "l": 1000, "ml": 1, "dozen": 600}
 
-# Cost per 500g in INR by category (fallback only)
-COST_PER_500G = {
+# Default weight per single unit (grams) — used when user says "I have jeera" with no qty
+WEIGHT_ESTIMATES = {
+    # produce (per piece)
+    "egg": 50, "banana": 120, "apple": 180, "orange": 200, "tomato": 100,
+    "potato": 150, "onion": 120, "lemon": 60, "mango": 250, "cucumber": 200,
+    "carrot": 80, "capsicum": 150, "bread": 400, "mushroom": 100,
+    # dairy / proteins (per pack/piece)
+    "milk": 500, "curd": 400, "paneer": 200, "butter": 500, "ghee": 500,
+    "cheese": 200, "egg": 50,
+    # dry staples (per typical packet)
+    "rice": 1000, "atta": 1000, "maida": 1000, "besan": 500, "flour": 1000,
+    "dal": 500, "moong dal": 500, "toor dal": 500, "urad dal": 500,
+    "chana dal": 500, "rajma": 500, "chana": 500, "oats": 500,
+    "sugar": 1000, "salt": 1000, "poha": 500, "sooji": 500, "suji": 500,
+    # spices — ground (standard small packet ~100g)
+    "masala": 100, "garam masala": 100, "haldi": 100, "turmeric": 100,
+    "jeera": 100, "cumin": 100, "dhania": 100, "coriander powder": 100,
+    "mirch": 100, "red chilli": 100, "chilli powder": 100, "lal mirch": 100,
+    "pepper": 100, "black pepper": 100, "amchur": 100,
+    "chaat masala": 100, "sambhar masala": 100, "biryani masala": 100,
+    "pav bhaji masala": 100, "chole masala": 100, "kitchen king masala": 100,
+    # whole spices (small quantities ~50g)
+    "hing": 50, "asafoetida": 50, "mustard": 100, "rai": 100,
+    "cardamom": 50, "elaichi": 50, "cinnamon": 50, "dalchini": 50,
+    "clove": 50, "laung": 50, "saunf": 100, "fennel": 100,
+    "ajwain": 100, "til": 100, "sesame": 100, "kalonji": 50,
+    # oils / liquid staples (per bottle)
+    "oil": 1000, "vinegar": 500, "honey": 500,
+    # snacks / packaged
+    "maggi": 70, "noodle": 70, "biscuit": 150, "chips": 50,
+    "bread": 400,
+}
     "vegetable": 40, "fruit": 60, "dairy": 70, "grain": 40,
     "spice": 80, "snack": 80, "beverage": 60, "meat": 150, "egg": 40, "other": 50,
 }
