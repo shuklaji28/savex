@@ -1170,6 +1170,8 @@ async def whatsapp_webhook(request: Request):
             return {"status": "ok", "type": "inventory_query"}
 
         # ── Step 1: Run full Gemini extraction for add/update/mark operations ──
+        inventory_context = await build_inventory_context()
+        
         chat = LlmChat(
             api_key=api_key,
             session_id=str(uuid.uuid4()),
