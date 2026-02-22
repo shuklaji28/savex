@@ -1074,9 +1074,33 @@ async def whatsapp_webhook(request: Request):
         items_list = extracted.get("items", [])
 
         if not items_list:
+            # Check if it's an inventory question ("do I have X?", "is there paneer?")
+            query_check = await LlmChat(
+                api_key=api_key,
+                session_id=str(uuid.uuid4()),
+                system_message="You detect if a message is asking about what the user has in their inventory/fridge/pantry. Return JSON only: {\"is_query\": true/false, \"items_asked\": [\"item1\", \"item2\"]}"
+            ).with_model("gemini", "gemini-3-flash-preview").send_message(
+                LLMUserMessage(text=f"Message: \"{user_message}\"")
+            )
+            qdata = parse_json_from_llm(query_check)
+            if qdata.get("is_query") and qdata.get("items_asked"):
+                lines = []
+                for asked in qdata["items_asked"]:
+                    matched = await find_active_item_by_name(asked.lower().strip())
+                    if matched:
+                        days, urgency = compute_urgency(matched.get("expiry_date", ""))
+                        loc = matched.get("storage_location", "")
+                        loc_hint = f" (📍 {loc})" if loc and loc != "unknown" else ""
+                        urgency_hint = " ⚠️ expiring soon!" if urgency in ("critical", "urgent") else f", {days}d left"
+                        lines.append(f"✅ Yes, you have *{matched['item_name'].capitalize()}*{loc_hint}{urgency_hint}")
+                    else:
+                        lines.append(f"❌ No *{asked}* found in your inventory — safe to buy!")
+                _send_whatsapp("🔍 *savex inventory check:*\n\n" + "\n".join(lines))
+                return {"status": "ok", "type": "inventory_query"}
+
             _send_whatsapp(
                 "🤔 *savex* couldn't find any food items in that.\n\n"
-                "Try:\n• _\"used the paneer\"_\n• _\"bought eggs and milk\"_\n• _\"threw away the spinach\"_"
+                "Try:\n• _\"do I have paneer?\"_\n• _\"used the milk\"_\n• _\"bought eggs and spinach\"_"
             )
             return {"status": "no_items_found"}
 
