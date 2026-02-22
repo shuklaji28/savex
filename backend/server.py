@@ -1059,8 +1059,52 @@ async def whatsapp_webhook(request: Request):
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         today_iso = date.today().isoformat()
 
-        # Run full Gemini extraction — inventory-aware (same pipeline as voice/text input)
-        inventory_context = await build_inventory_context()
+        # ── Step 0: Detect inventory queries FIRST, before full extraction ──
+        pre_check = await LlmChat(
+            api_key=api_key,
+            session_id=str(uuid.uuid4()),
+            system_message=(
+                "Classify if this WhatsApp message is asking what the user already has in their fridge/pantry/inventory. "
+                "Return JSON only: {\"is_query\": true/false, \"items_asked\": [\"item1\"]}. "
+                "is_query=true ONLY for questions: 'do I have X?', 'is there Y?', 'what do I have?', 'do I need to buy X?', 'check if I have X'. "
+                "is_query=false for action statements: 'I bought X', 'used X', 'threw X', 'X is in the fridge'."
+            )
+        ).with_model("gemini", "gemini-3-flash-preview").send_message(
+            LLMUserMessage(text=f"Message: \"{user_message}\"")
+        )
+        qdata = parse_json_from_llm(pre_check)
+
+        if qdata.get("is_query"):
+            items_asked = qdata.get("items_asked", [])
+            if not items_asked:
+                active = await db.food_items.find({"status": "active"}, {"_id": 0}).to_list(100)
+                if not active:
+                    _send_whatsapp("📦 *savex:* Your inventory is currently empty!")
+                else:
+                    lines = []
+                    for item in sorted(active, key=lambda x: x.get("expiry_date", "")):
+                        days, urgency = compute_urgency(item.get("expiry_date", ""))
+                        icon = "🔴" if urgency == "critical" else "🟡" if urgency == "urgent" else "🟢"
+                        loc = item.get("storage_location", "")
+                        loc_hint = f" (📍 {loc})" if loc and loc != "unknown" else ""
+                        lines.append(f"{icon} {item['item_name'].capitalize()}{loc_hint} — {days}d left")
+                    _send_whatsapp("📦 *savex — Your Inventory:*\n\n" + "\n".join(lines))
+            else:
+                lines = []
+                for asked in items_asked:
+                    matched = await find_active_item_by_name(asked.lower().strip())
+                    if matched:
+                        days, urgency = compute_urgency(matched.get("expiry_date", ""))
+                        loc = matched.get("storage_location", "")
+                        loc_hint = f" (📍 {loc})" if loc and loc != "unknown" else ""
+                        urgency_hint = " ⚠️ expiring soon!" if urgency in ("critical", "urgent") else f", {days}d left"
+                        lines.append(f"✅ Yes, *{matched['item_name'].capitalize()}*{loc_hint}{urgency_hint} — no need to buy!")
+                    else:
+                        lines.append(f"❌ No *{asked}* in inventory — safe to buy!")
+                _send_whatsapp("🔍 *savex inventory check:*\n\n" + "\n".join(lines))
+            return {"status": "ok", "type": "inventory_query"}
+
+        # ── Step 1: Run full Gemini extraction for add/update/mark operations ──
         chat = LlmChat(
             api_key=api_key,
             session_id=str(uuid.uuid4()),
