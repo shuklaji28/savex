@@ -293,6 +293,14 @@ const styles = StyleSheet.create({
   },
   ratioFill: { height: 6, backgroundColor: '#EF4444', borderRadius: 3 },
   ratioHint: { fontSize: 12, color: '#52525B', marginTop: 8, textTransform: 'capitalize' },
+  equivGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 4 },
+  equivCard: {
+    width: '48%', backgroundColor: '#18181B', borderRadius: 14, padding: 16,
+    alignItems: 'center', gap: 4,
+  },
+  equivEmoji: { fontSize: 28 },
+  equivValue: { fontSize: 22, fontWeight: '700', color: '#F5F5DC', marginTop: 4 },
+  equivLabel: { fontSize: 11, color: '#52525B', textAlign: 'center', lineHeight: 15 },
   summaryCard: { backgroundColor: '#18181B', borderRadius: 14, padding: 4 },
   summaryRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
