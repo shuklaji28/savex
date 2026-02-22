@@ -160,9 +160,6 @@ WEIGHT_ESTIMATES = {
     "maggi": 70, "noodle": 70, "biscuit": 150, "chips": 50,
     "bread": 400,
 }
-    "vegetable": 40, "fruit": 60, "dairy": 70, "grain": 40,
-    "spice": 80, "snack": 80, "beverage": 60, "meat": 150, "egg": 40, "other": 50,
-}
 
 # ─── INDIAN PRICE LOOKUP (per standard unit) ───
 INDIAN_PRICE_DB = {
