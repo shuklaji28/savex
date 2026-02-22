@@ -36,13 +36,13 @@ SHELF_LIFE_DB = {
     "cooked rice": {"days": 1, "category": "grain"}, "leftover": {"days": 1, "category": "other"},
     "cut fruit": {"days": 1, "category": "fruit"}, "dosa batter": {"days": 2, "category": "grain"},
     # Perishable (3-5 days)
-    "milk": {"days": 4, "category": "dairy"}, "curd": {"days": 5, "category": "dairy"},
+    "milk": {"days": 2, "category": "dairy"}, "curd": {"days": 5, "category": "dairy"},
     "yogurt": {"days": 5, "category": "dairy"}, "paneer": {"days": 4, "category": "dairy"},
     "bread": {"days": 4, "category": "grain"}, "mushroom": {"days": 3, "category": "vegetable"},
     "banana": {"days": 4, "category": "fruit"}, "strawberry": {"days": 3, "category": "fruit"},
     "grape": {"days": 5, "category": "fruit"}, "tofu": {"days": 4, "category": "dairy"},
     "cheese": {"days": 5, "category": "dairy"}, "cream": {"days": 4, "category": "dairy"},
-    "butter": {"days": 14, "category": "dairy"}, "egg": {"days": 14, "category": "egg"},
+    "butter": {"days": 30, "category": "dairy"}, "egg": {"days": 21, "category": "egg"},
     "chicken": {"days": 2, "category": "meat"}, "fish": {"days": 2, "category": "meat"},
     "mutton": {"days": 2, "category": "meat"}, "prawn": {"days": 2, "category": "meat"},
     # Moderate (5-10 days)
