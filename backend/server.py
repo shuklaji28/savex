@@ -231,6 +231,20 @@ def estimate_weight_grams(name: str, quantity: float, unit: str) -> float:
     per_item = WEIGHT_ESTIMATES.get(normalized, 200)
     return quantity * per_item
 
+# ─── CATEGORY-BASED COST ESTIMATES (per 500g) ───
+COST_PER_500G = {
+    "vegetable": 40, 
+    "fruit": 60, 
+    "dairy": 70, 
+    "grain": 40,
+    "spice": 80, 
+    "snack": 80, 
+    "beverage": 60, 
+    "meat": 150, 
+    "egg": 40, 
+    "other": 50,
+}
+
 def _lookup_unit_price(name: str) -> float | None:
     """Check INDIAN_PRICE_DB with exact then partial match."""
     normalized = name.lower().strip()
