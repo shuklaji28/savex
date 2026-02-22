@@ -58,7 +58,7 @@ SHELF_LIFE_DB = {
     # Long lasting (10-30 days)
     "potato": {"days": 21, "category": "vegetable"}, "onion": {"days": 21, "category": "vegetable"},
     "garlic": {"days": 21, "category": "vegetable"}, "ginger": {"days": 21, "category": "vegetable"},
-    "apple": {"days": 21, "category": "fruit"}, "cabbage": {"days": 14, "category": "vegetable"},
+    "apple": {"days": 7, "category": "fruit"}, "cabbage": {"days": 14, "category": "vegetable"},
     "beetroot": {"days": 14, "category": "vegetable"}, "radish": {"days": 10, "category": "vegetable"},
     "sweet potato": {"days": 14, "category": "vegetable"}, "pumpkin": {"days": 14, "category": "vegetable"},
     # Dry goods (30-180 days)
